@@ -3,56 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Track your Wendler 5/3/1 workouts with this setup page.">
+  <meta property="og:title" content="Wendler 5/3/1 Setup">
+  <meta property="og:description" content="Setup your workout details for the Wendler 5/3/1 program.">
+  <meta property="og:image" content="path/to/your-image.jpg"> <!-- Optional Open Graph Image -->
+  <meta name="robots" content="index, follow">
   <title>Wendler 5/3/1 Tracker - User Setup</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="preload" href="styles.css" as="style">
 </head>
 <body>
   <header>
     <h1>Wendler 5/3/1 Setup</h1>
+    <p>Fill in your details to begin your Wendler 5/3/1 journey.</p>
   </header>
 
   <main>
     <section id="user-details">
       <h2>Enter Your Details</h2>
-      <form id="user-form">
-        <label for="height">Height (in inches):</label>
-        <input type="number" id="height" name="height" required>
+      <form id="user-form" action="#" method="post" novalidate>
+        <fieldset>
+          <legend>User Information</legend>
+          <label for="height">Height (in inches):</label>
+          <input type="number" id="height" name="height" required aria-label="Enter your height in inches" placeholder="e.g. 70" />
 
-        <label for="weight">Weight (in pounds):</label>
-        <input type="number" id="weight" name="weight" required>
+          <label for="weight">Weight (in pounds):</label>
+          <input type="number" id="weight" name="weight" required aria-label="Enter your weight in pounds" placeholder="e.g. 180" />
 
-        <label for="age">Age:</label>
-        <input type="number" id="age" name="age" required>
+          <label for="age">Age:</label>
+          <input type="number" id="age" name="age" required aria-label="Enter your age" placeholder="e.g. 25" />
+        </fieldset>
 
-        <h3>Starting Weights</h3>
-        <label for="squat">Squat (lbs):</label>
-        <input type="number" id="squat" name="squat" required>
+        <fieldset>
+          <legend>Starting Weights</legend>
+          <label for="squat">Squat (lbs):</label>
+          <input type="number" id="squat" name="squat" required aria-label="Enter your starting squat weight" placeholder="e.g. 200" />
 
-        <label for="bench">Bench Press (lbs):</label>
-        <input type="number" id="bench" name="bench" required>
+          <label for="bench">Bench Press (lbs):</label>
+          <input type="number" id="bench" name="bench" required aria-label="Enter your starting bench press weight" placeholder="e.g. 150" />
 
-        <label for="deadlift">Deadlift (lbs):</label>
-        <input type="number" id="deadlift" name="deadlift" required>
+          <label for="deadlift">Deadlift (lbs):</label>
+          <input type="number" id="deadlift" name="deadlift" required aria-label="Enter your starting deadlift weight" placeholder="e.g. 250" />
+        </fieldset>
 
-        <h3>Select Workout Days</h3>
-        <label for="monday">Monday:</label>
-        <input type="checkbox" id="monday" name="workout-days" value="monday">
+        <fieldset>
+          <legend>Select Workout Days</legend>
+          <label for="monday">Monday:</label>
+          <input type="checkbox" id="monday" name="workout-days" value="monday" aria-label="Select Monday as a workout day" />
 
-        <label for="wednesday">Wednesday:</label>
-        <input type="checkbox" id="wednesday" name="workout-days" value="wednesday">
+          <label for="wednesday">Wednesday:</label>
+          <input type="checkbox" id="wednesday" name="workout-days" value="wednesday" aria-label="Select Wednesday as a workout day" />
 
-        <label for="saturday">Saturday:</label>
-        <input type="checkbox" id="saturday" name="workout-days" value="saturday">
+          <label for="saturday">Saturday:</label>
+          <input type="checkbox" id="saturday" name="workout-days" value="saturday" aria-label="Select Saturday as a workout day" />
+        </fieldset>
 
-        <button type="submit">Save Details</button>
+        <button type="submit" aria-label="Save your workout setup">Save Details</button>
       </form>
     </section>
   </main>
 
   <footer>
-    &copy; 2025 Wendler 5/3/1 Tracker
+    <p>&copy; 2025 Wendler 5/3/1 Tracker | <a href="privacy.html" aria-label="Privacy Policy">Privacy Policy</a> | <a href="terms.html" aria-label="Terms of Service">Terms of Service</a></p>
   </footer>
 
-  <script src="script.js"></script>
+  <script src="script.js" defer></script>
 </body>
 </html>
