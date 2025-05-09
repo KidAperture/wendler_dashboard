@@ -1,3 +1,4 @@
+/* styles.css */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -16,11 +17,6 @@ header {
   color: white;
   padding: 20px 0;
   text-align: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-header h1 {
-  font-size: 2rem;
 }
 
 main {
@@ -37,35 +33,17 @@ section {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-section h2 {
-  margin-bottom: 15px;
-  color: #2c3e50;
+button {
+  background-color: #27ae60;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
-.lift-entry {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid #eee;
-}
-
-.lift-entry:last-child {
-  border-bottom: none;
-}
-
-.progress-bar-container {
-  background: #eee;
-  border-radius: 10px;
-  overflow: hidden;
-  height: 20px;
-  margin-top: 10px;
-}
-
-.progress-bar {
-  height: 100%;
-  background: #27ae60;
-  width: 0;
-  transition: width 0.4s ease-in-out;
+button:hover {
+  background-color: #2ecc71;
 }
 
 footer {
@@ -73,21 +51,4 @@ footer {
   padding: 20px;
   font-size: 0.9rem;
   color: #888;
-}
-
-#progress-text {
-  margin-top: 10px;
-  text-align: center;
-  font-size: 1rem;
-  color: #2c3e50;
-}
-
-.complete {
-  color: #27ae60;
-  font-weight: bold;
-}
-
-.in-progress {
-  color: #f39c12;
-  font-weight: bold;
 }
