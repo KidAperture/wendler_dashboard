@@ -1,45 +1,51 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wendler 5/3/1 Dashboard</title>
-  <link rel="stylesheet" href="styles.css"> <!-- Link to the external CSS -->
+  <title>Wendler 5/3/1 Tracker - User Setup</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
   <header>
-    <h1>Wendler 5/3/1 Dashboard</h1>
+    <h1>Wendler 5/3/1 Setup</h1>
   </header>
 
   <main>
-    <section id="current-cycle">
-      <h2>Current Cycle</h2>
-      <div class="lift-entry">
-        <span>Squat</span>
-        <span>245 lbs x 5</span>
-      </div>
-      <div class="lift-entry">
-        <span>Bench Press</span>
-        <span>185 lbs x 5</span>
-      </div>
-      <div class="lift-entry">
-        <span>Deadlift</span>
-        <span>315 lbs x 5</span>
-      </div>
-      <div class="lift-entry">
-        <span>Overhead Press</span>
-        <span>135 lbs x 5</span>
-      </div>
-    </section>
+    <section id="user-details">
+      <h2>Enter Your Details</h2>
+      <form id="user-form">
+        <label for="height">Height (in inches):</label>
+        <input type="number" id="height" name="height" required>
 
-    <section id="progress">
-      <h2>Progress</h2>
-      <div class="progress-bar-container">
-        <div class="progress-bar" style="width: 70%;"></div>
-      </div>
-      <div id="progress-text"></div> <!-- For progress messages -->
+        <label for="weight">Weight (in pounds):</label>
+        <input type="number" id="weight" name="weight" required>
+
+        <label for="age">Age:</label>
+        <input type="number" id="age" name="age" required>
+
+        <h3>Starting Weights</h3>
+        <label for="squat">Squat (lbs):</label>
+        <input type="number" id="squat" name="squat" required>
+
+        <label for="bench">Bench Press (lbs):</label>
+        <input type="number" id="bench" name="bench" required>
+
+        <label for="deadlift">Deadlift (lbs):</label>
+        <input type="number" id="deadlift" name="deadlift" required>
+
+        <h3>Select Workout Days</h3>
+        <label for="monday">Monday:</label>
+        <input type="checkbox" id="monday" name="workout-days" value="monday">
+
+        <label for="wednesday">Wednesday:</label>
+        <input type="checkbox" id="wednesday" name="workout-days" value="wednesday">
+
+        <label for="saturday">Saturday:</label>
+        <input type="checkbox" id="saturday" name="workout-days" value="saturday">
+
+        <button type="submit">Save Details</button>
+      </form>
     </section>
   </main>
 
@@ -47,7 +53,6 @@
     &copy; 2025 Wendler 5/3/1 Tracker
   </footer>
 
-  <script src="script.js"></script> <!-- Link to the external JS -->
+  <script src="script.js"></script>
 </body>
-
 </html>
