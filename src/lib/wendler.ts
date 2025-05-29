@@ -33,12 +33,29 @@ export function calculateWendlerCycle(profile: UserProfile, cycleNumber: number 
       const dayOffset = (dayOfWeekIndex - getDay(weekStartDateForCalc) + 7) % 7;
       const workoutDate = addDays(weekStartDateForCalc, dayOffset);
 
-      const sets: WorkoutSet[] = weekConfig.sets.map(setConf => ({
-        percentage: setConf.percentage,
-        targetReps: setConf.reps,
-        targetWeight: roundToNearestPlate(trainingMax * setConf.percentage),
-        isAmrap: setConf.amrap,
-      }));
+      const sets: WorkoutSet[] = weekConfig.sets.map(setConf => {
+        const rawWeight = trainingMax * setConf.percentage;
+        let finalTargetWeight: number;
+
+        if (profile.unitSystem === 'imperial') {
+          // Round total weight so that (TotalWeight - 45lb_bar) / 2 is a multiple of 5lbs.
+          // This means TotalWeight must be of the form 10k + 45, i.e., ending in 5.
+          finalTargetWeight = Math.round((rawWeight - 5) / 10) * 10 + 5;
+        } else { // metric
+          // Round total weight to nearest 5kg.
+          // This generally allows (TotalWeight - 20kg_bar) / 2 to be a multiple of 2.5kg.
+          finalTargetWeight = roundToNearestPlate(rawWeight, 5);
+        }
+        // Ensure weight is not negative if TM is very low or zero.
+        finalTargetWeight = Math.max(0, finalTargetWeight);
+        
+        return {
+          percentage: setConf.percentage,
+          targetReps: setConf.reps,
+          targetWeight: finalTargetWeight,
+          isAmrap: setConf.amrap,
+        };
+      });
 
       dailyWorkouts.push({
         date: format(workoutDate, 'yyyy-MM-dd'),
@@ -119,7 +136,7 @@ export function formatDisplayWeight(
   totalWeightInput: number, // This is the actual target weight, already in the user's chosen unit system and rounded by roundToNearestPlate
   profile: UserProfile | null
 ): string {
-  if (!profile) return `${totalWeightInput} units`; // Fallback, totalWeightInput is already rounded
+  if (!profile) return `${totalWeightInput} units`; // Fallback
 
   const unitSuffix = profile.unitSystem === 'metric' ? 'kg' : 'lb';
 
@@ -133,13 +150,14 @@ export function formatDisplayWeight(
       // User is in imperial, bar reference is 45lb
       barbellWeightInCurrentUnit = BARBELL_REFERENCE_LB; // 45 lb
     }
-
-    // totalWeightInput is already rounded (e.g. to 2.5 increments)
+    
+    // totalWeightInput is now pre-rounded by calculateWendlerCycle for this preference
     if (totalWeightInput <= barbellWeightInCurrentUnit) {
       return `${totalWeightInput} ${unitSuffix} (Barbell)`;
     } else {
       const platesTotalWeight = totalWeightInput - barbellWeightInCurrentUnit;
-      // Plates per side value should also be rounded to a sensible number, e.g., 0.25 for lbs, 0.125 for kgs, or just use roundToNearestPlate with its default
+      // Plates per side value should also be rounded to a sensible number, default 2.5 for roundToNearestPlate.
+      // Given the pre-rounding of totalWeightInput, platesTotalWeight / 2 should already be a nice number.
       const platesPerSideValue = roundToNearestPlate(platesTotalWeight / 2); 
       
       if (platesPerSideValue <= 0) { 
@@ -151,3 +169,4 @@ export function formatDisplayWeight(
     return `${totalWeightInput} ${unitSuffix}`;
   }
 }
+
