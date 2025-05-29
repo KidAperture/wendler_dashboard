@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,6 +28,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { calculateTrainingMax } from "@/lib/wendler";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { useEffect } from 'react';
 
 
 const profileFormSchema = z.object({
@@ -47,13 +49,15 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+// Initialize startDate as undefined to prevent hydration mismatch.
+// It will be set by useEffect on the client if it's a new profile.
 const defaultValues: Partial<ProfileFormValues> = {
   oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
     acc[lift.id] = 0;
     return acc;
   }, {} as Record<typeof MAIN_LIFTS[number]["id"], number>),
   workoutDays: [],
-  startDate: new Date(),
+  startDate: undefined, // Set to undefined initially
 };
 
 export function UserProfileForm() {
@@ -65,9 +69,18 @@ export function UserProfileForm() {
     resolver: zodResolver(profileFormSchema),
     defaultValues: profile ? {
       ...profile,
-      startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
+      startDate: profile.startDate ? parseISO(profile.startDate) : undefined, // Use undefined if profile.startDate is not set
     } : defaultValues,
   });
+
+  const { setValue, getValues } = form;
+
+  useEffect(() => {
+    // Set initial date on client-side for new profiles only if no date is already set
+    if (!getValues('startDate')) {
+      setValue('startDate', new Date(), { shouldValidate: false, shouldDirty: false });
+    }
+  }, [setValue, getValues, profile]); // Re-run if profile changes, to ensure new Date() is only set if profile still doesn't provide one.
 
   function onSubmit(data: ProfileFormValues) {
     const trainingMaxes = MAIN_LIFTS.reduce((acc, lift) => {
@@ -241,3 +254,5 @@ export function UserProfileForm() {
     </Card>
   );
 }
+
+    
