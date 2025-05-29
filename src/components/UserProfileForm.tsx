@@ -17,19 +17,29 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, AlertTriangle } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { useAppContext } from "@/hooks/use-app-context";
 import type { UserProfile } from "@/lib/types";
-import { MAIN_LIFTS, DAYS_OF_WEEK, DEFAULT_TRAINING_MAX_PERCENTAGE, DayOfWeek } from "@/lib/constants";
+import { MAIN_LIFTS, MainLiftId, DAYS_OF_WEEK, DEFAULT_TRAINING_MAX_PERCENTAGE, DayOfWeek } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { calculateTrainingMax } from "@/lib/wendler";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useEffect } from 'react';
-
+import { useEffect, useState } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const profileFormSchema = z.object({
   name: z.string().optional(),
@@ -38,9 +48,9 @@ const profileFormSchema = z.object({
   }),
   oneRepMaxes: z.object(
     MAIN_LIFTS.reduce((acc, lift) => {
-      acc[lift.id] = z.coerce.number().min(1, `${lift.name} max must be greater than 0.`);
+      acc[lift.id] = z.coerce.number().min(0, `${lift.name} max can be 0 if unknown, but not negative.`); // Allow 0
       return acc;
-    }, {} as Record<typeof MAIN_LIFTS[number]["id"], z.ZodNumber>)
+    }, {} as Record<MainLiftId, z.ZodNumber>)
   ),
   workoutDays: z.array(z.string()).refine((value) => value.some((day) => day), {
     message: "You have to select at least one workout day.",
@@ -49,48 +59,62 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-const defaultValues: Partial<ProfileFormValues> = {
-  name: "", // Ensure name is initialized to empty string for controlled input
+// Base default values for a new/empty form
+const initialFormValues: ProfileFormValues = {
+  name: "",
   oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
     acc[lift.id] = 0;
     return acc;
-  }, {} as Record<typeof MAIN_LIFTS[number]["id"], number>),
+  }, {} as Record<MainLiftId, number>),
   workoutDays: [],
-  startDate: undefined, 
+  startDate: new Date(), 
 };
 
 export function UserProfileForm() {
-  const { profile, setProfile, recalculateCycle } = useAppContext();
+  const { profile, setProfile, recalculateCycle, resetProgress: resetAppContextProgress } = useAppContext();
   const { toast } = useToast();
   const router = useRouter();
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
-    defaultValues: profile ? {
-      ...profile,
-      name: profile.name ?? "", // Ensure name is empty string if null/undefined from profile
-      oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
-        acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0; // Default to 0 if specific lift max is missing
-        return acc;
-      }, {} as Record<MainLiftId, number>),
-      startDate: profile.startDate ? parseISO(profile.startDate) : undefined, 
-    } : defaultValues,
+    defaultValues: profile
+      ? {
+          name: profile.name ?? "",
+          oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
+            acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
+            return acc;
+          }, {} as Record<MainLiftId, number>),
+          startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
+          workoutDays: profile.workoutDays || [],
+        }
+      : initialFormValues,
   });
 
-  const { setValue, getValues } = form;
-
   useEffect(() => {
-    if (!getValues('startDate') && !profile?.startDate) { // Only set if no date is present at all
-      setValue('startDate', new Date(), { shouldValidate: true, shouldDirty: true });
+    // Sync form with profile data from context when it changes (e.g., after reset)
+    if (profile) {
+      form.reset({
+        name: profile.name ?? "",
+        oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
+          acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
+          return acc;
+        }, {} as Record<MainLiftId, number>),
+        startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
+        workoutDays: profile.workoutDays || [],
+      });
+    } else {
+      form.reset(initialFormValues);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.startDate, getValues, setValue]); // Depend on profile.startDate to re-evaluate if profile loads later
+  }, [profile, form]);
+
 
   function onSubmit(data: ProfileFormValues) {
     const trainingMaxes = MAIN_LIFTS.reduce((acc, lift) => {
         acc[lift.id] = calculateTrainingMax(data.oneRepMaxes[lift.id]);
         return acc;
-    }, {} as Record<typeof MAIN_LIFTS[number]["id"], number>);
+    }, {} as Record<MainLiftId, number>);
 
     const newProfile: UserProfile = {
       id: profile?.id || "currentUser", 
@@ -109,6 +133,28 @@ export function UserProfileForm() {
     });
     router.push("/dashboard");
   }
+
+  const handleResetProgress = async () => {
+    setIsResetting(true);
+    try {
+      await resetAppContextProgress(); // Assuming resetAppContextProgress could be async if it involved API calls, though here it's sync
+      toast({
+        title: "Progress Reset",
+        description: "Your workout history and maxes have been cleared. You can now start over.",
+      });
+      // The useEffect listening to `profile` will update the form.
+    } catch (error) {
+      toast({
+        title: "Reset Failed",
+        description: "Could not reset progress. Please try again.",
+        variant: "destructive",
+      });
+      console.error("Reset progress error:", error);
+    } finally {
+      setIsResetting(false);
+      setIsResetDialogOpen(false);
+    }
+  };
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
@@ -149,6 +195,7 @@ export function UserProfileForm() {
                           {...field} 
                           value={field.value ?? 0}
                           onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                          min="0"
                         />
                       </FormControl>
                       <FormMessage />
@@ -188,9 +235,6 @@ export function UserProfileForm() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
-                        disabled={(date) =>
-                          date < new Date(new Date().setDate(new Date().getDate() - 1)) 
-                        }
                         initialFocus
                       />
                     </PopoverContent>
@@ -254,8 +298,33 @@ export function UserProfileForm() {
               )}
             />
           </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full md:w-auto">Save Profile</Button>
+          <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <Button type="submit" className="w-full sm:w-auto">Save Profile</Button>
+            <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" type="button" className="w-full sm:w-auto">
+                  <AlertTriangle className="mr-2 h-4 w-4" /> Reset Progress & Start Over
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete all your workout logs and reset your current maxes and cycle start date.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleResetProgress}
+                    disabled={isResetting}
+                    className={buttonVariants({variant: "destructive"})}
+                  >
+                    {isResetting ? "Resetting..." : "Yes, Reset My Progress"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardFooter>
         </form>
       </Form>
