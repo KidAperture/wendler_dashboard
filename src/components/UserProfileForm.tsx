@@ -2,7 +2,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -18,18 +18,18 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarIcon, AlertTriangle } from "lucide-react";
+import { CalendarIcon, AlertTriangle, InfoIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { useAppContext } from "@/hooks/use-app-context";
 import type { UserProfile } from "@/lib/types";
-import { MAIN_LIFTS, MainLiftId, DAYS_OF_WEEK, DayOfWeek } from "@/lib/constants";
+import { MAIN_LIFTS, MainLiftId, DAYS_OF_WEEK, DayOfWeek, DEFAULT_TRAINING_MAX_PERCENTAGE } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { calculateTrainingMax } from "@/lib/wendler";
+import { calculateTrainingMax, roundToNearestPlate } from "@/lib/wendler";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Separator } from "./ui/separator";
 
 const mainLiftIds = MAIN_LIFTS.map(lift => lift.id) as [MainLiftId, ...MainLiftId[]];
 
@@ -48,7 +49,7 @@ const profileFormSchema = z.object({
   name: z.string().optional(),
   startDate: z.date({
     required_error: "A start date is required.",
-  }).optional(),
+  }),
   oneRepMaxes: z.object(
     MAIN_LIFTS.reduce((acc, lift) => {
       acc[lift.id] = z.coerce.number().min(0, `${lift.name} max can be 0 if unknown, but not negative.`);
@@ -62,20 +63,12 @@ const profileFormSchema = z.object({
   }))
   .refine(selections => selections.some(s => s.selected), {
     message: "You must select at least one workout day.",
-    path: ["workoutSelections"], // General path for the array
+    path: ["workoutSelections"], 
   })
   .refine(selections => selections.filter(s => s.selected).every(s => s.lift !== null), {
     message: "Each selected day must have an assigned lift.",
     path: ["workoutSelections"],
   })
-  // Optional: Add validation for unique lifts if needed
-  // .refine(selections => {
-  //   const selectedLifts = selections.filter(s => s.selected && s.lift).map(s => s.lift);
-  //   return new Set(selectedLifts).size === selectedLifts.length;
-  // }, {
-  //   message: "Each main lift should only be assigned to one day.",
-  //   path: ["workoutSelections"],
-  // })
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
@@ -86,15 +79,6 @@ const initialWorkoutSelections = DAYS_OF_WEEK.map(day => ({
   lift: null as MainLiftId | null,
 }));
 
-const initialFormValues: ProfileFormValues = {
-  name: "",
-  oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
-    acc[lift.id] = 0;
-    return acc;
-  }, {} as Record<MainLiftId, number>),
-  startDate: undefined,
-  workoutSelections: initialWorkoutSelections,
-};
 
 export function UserProfileForm() {
   const { profile, setProfile, resetProgress: resetAppContextProgress } = useAppContext();
@@ -102,7 +86,16 @@ export function UserProfileForm() {
   const router = useRouter();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [initialStartDate, setInitialStartDate] = useState<Date | undefined>(new Date());
+  
+  const initialFormValues: ProfileFormValues = useMemo(() => ({
+    name: "",
+    oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
+      acc[lift.id] = 0;
+      return acc;
+    }, {} as Record<MainLiftId, number>),
+    startDate: new Date(), // Default to today for new profiles
+    workoutSelections: initialWorkoutSelections,
+  }), []);
 
 
   const form = useForm<ProfileFormValues>({
@@ -121,7 +114,7 @@ export function UserProfileForm() {
         };
       });
 
-      const loadedValues = {
+      form.reset({
         name: profile.name ?? "",
         oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
           acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
@@ -129,22 +122,21 @@ export function UserProfileForm() {
         }, {} as Record<MainLiftId, number>),
         startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
         workoutSelections: loadedSelections.length > 0 ? loadedSelections : initialWorkoutSelections,
-      };
-      form.reset(loadedValues);
-      setInitialStartDate(loadedValues.startDate);
+      });
     } else {
-      form.reset({...initialFormValues, startDate: new Date() }); // Ensure startDate is set for new profile
-      setInitialStartDate(new Date());
+      form.reset(initialFormValues);
     }
-  }, [profile, form]);
+  }, [profile, form, initialFormValues]);
 
-   useEffect(() => {
-    // This effect ensures that if `startDate` is initially undefined in the form (e.g. after a reset or on first load with no profile),
-    // it gets populated with `initialStartDate` (which defaults to `new Date()` or loaded profile's start date).
-    if (!form.getValues('startDate') && initialStartDate) {
-      form.setValue('startDate', initialStartDate, { shouldValidate: true });
-    }
-  }, [form, initialStartDate]);
+
+  const watchedOneRepMaxes = form.watch("oneRepMaxes");
+  const calculatedTrainingMaxes = useMemo(() => {
+    return MAIN_LIFTS.reduce((acc, lift) => {
+      const orm = watchedOneRepMaxes[lift.id];
+      acc[lift.id] = roundToNearestPlate(calculateTrainingMax(orm));
+      return acc;
+    }, {} as Record<MainLiftId, number>);
+  }, [watchedOneRepMaxes]);
 
 
   function onSubmit(data: ProfileFormValues) {
@@ -157,16 +149,12 @@ export function UserProfileForm() {
         return;
     }
 
-    const trainingMaxes = MAIN_LIFTS.reduce((acc, lift) => {
-        acc[lift.id] = calculateTrainingMax(data.oneRepMaxes[lift.id]);
-        return acc;
-    }, {} as Record<MainLiftId, number>);
-
+    // Training maxes are derived from oneRepMaxes, so we use the already calculated ones
     const workoutSchedule = data.workoutSelections
       .filter(selection => selection.selected && selection.lift)
       .map(selection => ({
         day: selection.day,
-        lift: selection.lift!, // Lift is guaranteed by schema refinement
+        lift: selection.lift!, 
       }));
 
     const newProfile: UserProfile = {
@@ -174,7 +162,7 @@ export function UserProfileForm() {
       name: data.name ?? "",
       startDate: format(data.startDate, "yyyy-MM-dd"),
       oneRepMaxes: data.oneRepMaxes,
-      trainingMaxes: trainingMaxes,
+      trainingMaxes: calculatedTrainingMaxes, // Use the memoized calculated TMs
       workoutSchedule: workoutSchedule,
     };
     setProfile(newProfile);
@@ -189,9 +177,8 @@ export function UserProfileForm() {
   const handleResetProgress = async () => {
     setIsResetting(true);
     try {
-      await resetAppContextProgress();
-      // Form will be reset by useEffect watching `profile`
-      setInitialStartDate(new Date()); // Ensure calendar defaults to today after reset
+      await resetAppContextProgress(); // This will update context's profile
+      // Form will be reset by useEffect watching `profile` which will now be the reset profile
       toast({
         title: "Progress Reset",
         description: "Your workout history and maxes have been cleared. You can now start over.",
@@ -234,31 +221,58 @@ export function UserProfileForm() {
               )}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {MAIN_LIFTS.map((lift) => (
-                <FormField
-                  key={lift.id}
-                  control={form.control}
-                  name={`oneRepMaxes.${lift.id}`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{lift.name} 1RM (kg/lb)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          placeholder={`Enter ${lift.name} 1RM`}
-                          {...field}
-                          value={field.value === undefined ? '' : field.value}
-                          onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
-                          min="0"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ))}
+            <div className="space-y-6">
+              <div>
+                <FormLabel className="text-base font-semibold">One Rep Maxes (1RMs)</FormLabel>
+                <FormDescription>
+                  Enter your current estimated 1 Rep Max for each lift. Your Training Max (TM) will be calculated from this (usually {DEFAULT_TRAINING_MAX_PERCENTAGE * 100}% of 1RM).
+                </FormDescription>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {MAIN_LIFTS.map((lift) => (
+                  <FormField
+                    key={lift.id}
+                    control={form.control}
+                    name={`oneRepMaxes.${lift.id}`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{lift.name} 1RM (kg/lb)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder={`Enter ${lift.name} 1RM`}
+                            {...field}
+                            value={field.value === undefined ? '' : String(field.value)}
+                            onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                            min="0"
+                            step="0.5"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
             </div>
+            
+            <div className="space-y-3 p-4 border rounded-md bg-muted/30">
+               <div className="flex items-center gap-2">
+                  <InfoIcon className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Calculated Training Maxes (TMs)</h3>
+                </div>
+                <FormDescription>
+                  These are your working TMs for the program, based on your 1RMs. Weights are rounded to the nearest common plate increment.
+                </FormDescription>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 mt-2">
+                {MAIN_LIFTS.map((lift) => (
+                  <div key={lift.id} className="text-sm">
+                    <span className="font-medium">{lift.name} TM:</span> {calculatedTrainingMaxes[lift.id]} kg/lb
+                  </div>
+                ))}
+              </div>
+            </div>
+
 
             <FormField
               control={form.control}
@@ -290,24 +304,26 @@ export function UserProfileForm() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
-                        disabled={(date) => date < new Date("1900-01-01")}
+                        // disabled={(date) => date < new Date("1900-01-01")} // Allow past dates if user wants to log old cycles
                         initialFocus
                       />
                     </PopoverContent>
                   </Popover>
                   <FormDescription>
-                    Select the date you want to start your first cycle.
+                    Select the date you want to start your first (or current) cycle.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+            
+            <Separator />
 
             <FormItem>
               <div className="mb-4">
-                <FormLabel className="text-base">Workout Days & Lifts</FormLabel>
+                <FormLabel className="text-base font-semibold">Workout Days & Lifts</FormLabel>
                 <FormDescription>
-                  Select workout days and assign a main lift to each.
+                  Select workout days and assign a main lift to each. Ensure each main lift is assigned to at most one day if following a standard template.
                 </FormDescription>
               </div>
               <div className="space-y-4">
@@ -316,15 +332,14 @@ export function UserProfileForm() {
                     <FormField
                       control={form.control}
                       name={`workoutSelections.${index}.selected`}
-                      render={({ field }) => (
+                      render={({ field: checkboxField }) => ( // Renamed field to avoid conflict
                         <FormItem className="flex flex-row items-center space-x-3 space-y-0 sm:w-1/3">
                           <FormControl>
                             <Checkbox
-                              checked={field.value}
+                              checked={checkboxField.value}
                               onCheckedChange={(checked) => {
-                                field.onChange(checked);
+                                checkboxField.onChange(checked);
                                 if (!checked) {
-                                  // If unselected, clear the lift for that day
                                   form.setValue(`workoutSelections.${index}.lift`, null);
                                 }
                               }}
@@ -340,11 +355,12 @@ export function UserProfileForm() {
                       <FormField
                         control={form.control}
                         name={`workoutSelections.${index}.lift`}
-                        render={({ field }) => (
+                        render={({ field: selectField }) => ( // Renamed field
                           <FormItem className="flex-1 min-w-[180px]">
                             <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value ?? undefined}
+                              onValueChange={selectField.onChange}
+                              value={selectField.value ?? ""} // Ensure value is not null for Select
+                              defaultValue={selectField.value ?? undefined}
                             >
                               <FormControl>
                                 <SelectTrigger>
@@ -367,12 +383,11 @@ export function UserProfileForm() {
                   </div>
                 ))}
               </div>
-              {/* Display general error for workoutSelections array if any */}
               <FormMessage>{form.formState.errors.workoutSelections?.message || form.formState.errors.workoutSelections?.root?.message}</FormMessage>
             </FormItem>
 
           </CardContent>
-          <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6">
             <Button type="submit" className="w-full sm:w-auto">Save Profile</Button>
             <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
               <AlertDialogTrigger asChild>
@@ -384,7 +399,7 @@ export function UserProfileForm() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all your workout logs and reset your current maxes and cycle start date.
+                    This action cannot be undone. This will permanently delete all your workout logs and reset your current maxes and cycle start date to today.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -392,7 +407,7 @@ export function UserProfileForm() {
                   <AlertDialogAction
                     onClick={handleResetProgress}
                     disabled={isResetting}
-                    className={buttonVariants({variant: "destructive"})}
+                    className={cn(buttonVariants({variant: "destructive"}))}
                   >
                     {isResetting ? "Resetting..." : "Yes, Reset My Progress"}
                   </AlertDialogAction>
