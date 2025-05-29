@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { DailyWorkout } from "@/lib/types";
@@ -7,6 +8,7 @@ import { MAIN_LIFTS } from "@/lib/constants";
 import { WorkoutLogForm } from "./WorkoutLogForm";
 import { CheckCircle, CalendarDays } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { cn } from "@/lib/utils"; // Added this import
 
 interface WorkoutCardProps {
   dailyWorkout: DailyWorkout;
