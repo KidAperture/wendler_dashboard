@@ -1,3 +1,4 @@
+
 import { addDays, addWeeks, format, parseISO, getDay, differenceInCalendarWeeks } from 'date-fns';
 import type { UserProfile, WorkoutCycle, WeeklyWorkout, DailyWorkout, WorkoutSet } from './types';
 import { DEFAULT_LIFT_ORDER, DEFAULT_TRAINING_MAX_PERCENTAGE, MAIN_LIFTS, WENDLER_WEEK_CONFIGS, DAYS_OF_WEEK, DayOfWeek } from './constants';
@@ -124,4 +125,30 @@ export function getWeekWorkouts(profile: UserProfile, cycleNumber: number, weekN
   if(!cycle) return null;
   const weekData = cycle.weeks.find(w => w.weekNumber === weekNumber);
   return weekData ? weekData.days : null;
+}
+
+/**
+ * Calculates Estimated 1 Rep Max (e1RM) using the Brzycki formula.
+ * @param weight The weight lifted.
+ * @param reps The number of repetitions performed.
+ * @returns The calculated e1RM, rounded to the nearest plate increment, or 0 if reps are invalid.
+ */
+export function calculateE1RM(weight: number, reps: number): number {
+  if (reps <= 0) return 0; // Invalid input for Brzycki
+  if (reps === 1) return roundToNearestPlate(weight);
+
+  // Brzycki formula: Weight / (1.0278 - 0.0278 * Reps)
+  // Alternate common form: Weight * (36 / (37 - Reps))
+  const denominator = 1.0278 - 0.0278 * reps;
+
+  // Avoid division by zero or negative if reps are too high (e.g., > ~36 for Brzycki)
+  if (denominator <= 0) {
+    // For very high reps, e1RM formulas are less reliable or might break.
+    // Consider an alternative or cap, but for now, return 0 or a high multiple of weight.
+    // Returning 0 indicates an issue or that the formula limit was exceeded.
+    return 0; 
+  }
+  
+  const estimatedMax = weight / denominator;
+  return roundToNearestPlate(estimatedMax);
 }
