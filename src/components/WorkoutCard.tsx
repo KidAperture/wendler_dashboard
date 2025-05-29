@@ -9,7 +9,9 @@ import { WorkoutLogForm } from "./WorkoutLogForm";
 import { CheckCircle, CalendarDays } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useAppContext } from "@/hooks/use-app-context"; // Import useAppContext
+import { useAppContext } from "@/hooks/use-app-context"; 
+import { formatDisplayWeight } from "@/lib/wendler";
+
 
 interface WorkoutCardProps {
   dailyWorkout: DailyWorkout;
@@ -17,8 +19,7 @@ interface WorkoutCardProps {
 }
 
 export function WorkoutCard({ dailyWorkout, isToday = false }: WorkoutCardProps) {
-  const { profile } = useAppContext(); // Get profile from context
-  const unitSuffix = profile?.unitSystem === 'metric' ? 'kg' : 'lb';
+  const { profile } = useAppContext(); 
   const liftName = MAIN_LIFTS.find(l => l.id === dailyWorkout.mainLift)?.name || dailyWorkout.mainLift;
 
   return (
@@ -46,7 +47,7 @@ export function WorkoutCard({ dailyWorkout, isToday = false }: WorkoutCardProps)
         <ul className="space-y-1 list-disc list-inside mb-4">
           {dailyWorkout.sets.map((set, index) => (
             <li key={index} className="text-sm">
-              Set {index + 1}: <span className="font-medium">{set.targetWeight} {unitSuffix}</span> x <span className="font-medium">{set.targetReps} reps</span>
+              Set {index + 1}: <span className="font-medium">{formatDisplayWeight(set.targetWeight, profile)}</span> x <span className="font-medium">{set.targetReps} reps</span>
               {set.isAmrap && <Badge variant="outline" className="ml-2 text-xs">AMRAP</Badge>}
               {dailyWorkout.isCompleted && set.completedReps !== undefined && <span className="ml-2 text-primary font-semibold">(Completed: {set.completedReps} reps)</span>}
             </li>

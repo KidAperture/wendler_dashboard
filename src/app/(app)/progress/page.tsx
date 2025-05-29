@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { MAIN_LIFTS, MainLiftId } from "@/lib/constants";
-import { calculateE1RM } from "@/lib/wendler";
+import { calculateE1RM, formatDisplayWeight } from "@/lib/wendler";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { ArrowUp, ArrowDown, Minus } from "lucide-react";
@@ -20,13 +20,14 @@ import { ArrowUp, ArrowDown, Minus } from "lucide-react";
 interface ChartDataPoint {
   originalDate: string;
   e1RM: number;
-  weight: number;
+  weight: number; // This is total weight
   reps: number;
   prescribedRepsTarget: string;
 }
 
 export default function ProgressPage() {
   const { workoutLogs, profile, isLoading } = useAppContext();
+  
   const unitSuffix = React.useMemo(() => profile?.unitSystem === 'metric' ? 'kg' : 'lb', [profile]);
 
   const chartDataByLift = React.useMemo(() => {
@@ -37,7 +38,7 @@ export default function ProgressPage() {
       overheadPress: [],
     };
 
-    if (!workoutLogs || workoutLogs.length === 0) {
+    if (!workoutLogs || workoutLogs.length === 0 || !profile) { // Added !profile check
       return data;
     }
 
@@ -50,7 +51,7 @@ export default function ProgressPage() {
         data[log.exercise].push({
           originalDate: log.date,
           e1RM: e1RM,
-          weight: topSet.prescribedWeight,
+          weight: topSet.prescribedWeight, // This is total weight
           reps: topSet.actualReps,
           prescribedRepsTarget: topSet.prescribedReps,
         });
@@ -65,7 +66,7 @@ export default function ProgressPage() {
       }
     });
     return data;
-  }, [workoutLogs]);
+  }, [workoutLogs, profile]); // Added profile dependency
 
   if (isLoading) {
     return <div className="text-center py-10">Loading progress data...</div>;
@@ -190,8 +191,9 @@ export default function ProgressPage() {
                       <ChartTooltip
                         cursor={true}
                         content={({ active, payload, label }) => {
-                          if (active && payload && payload.length && label) {
+                          if (active && payload && payload.length && label && profile) { // Added profile check
                             const dataPoint = payload[0].payload as ChartDataPoint;
+                            const displayWeightString = formatDisplayWeight(dataPoint.weight, profile);
                             return (
                               <div className="rounded-lg border bg-background p-2.5 shadow-sm text-sm">
                                 <div className="grid gap-1.5">
@@ -206,7 +208,7 @@ export default function ProgressPage() {
                                     </div>
                                   </div>
                                   <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px]">
-                                    <span>(Set: {dataPoint.weight} {unitSuffix} x {dataPoint.prescribedRepsTarget})</span>
+                                    <span>(Set: {displayWeightString} x {dataPoint.prescribedRepsTarget})</span>
                                   </div>
                                   {dataPoint.e1RM > 0 && (
                                     <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px] mt-1 pt-1 border-t border-dashed">
@@ -261,12 +263,13 @@ export default function ProgressPage() {
                   {sortedLogsForTable.map((log) => {
                     const exerciseName = MAIN_LIFTS.find(l => l.id === log.exercise)?.name || log.exercise;
                     const topSet = log.completedSets.find(s => s.isAmrap) || log.completedSets[log.completedSets.length - 1];
+                    const displayWeight = topSet ? formatDisplayWeight(topSet.prescribedWeight, profile) : 'N/A';
                     return (
                       <TableRow key={log.logId}>
                         <TableCell>{format(parseISO(log.date), "MMM d, yyyy")}</TableCell>
                         <TableCell>{exerciseName}</TableCell>
                         <TableCell>
-                          {topSet ? `${topSet.prescribedWeight} ${unitSuffix} x ${topSet.actualReps} reps (Target: ${topSet.prescribedReps})` : 'N/A'}
+                          {topSet ? `${displayWeight} x ${topSet.actualReps} reps (Target: ${topSet.prescribedReps})` : 'N/A'}
                         </TableCell>
                         <TableCell>{log.trainingMaxUsed} {unitSuffix}</TableCell>
                       </TableRow>

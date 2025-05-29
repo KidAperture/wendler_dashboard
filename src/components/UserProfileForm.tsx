@@ -23,7 +23,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { useAppContext } from "@/hooks/use-app-context";
-import type { UserProfile, UnitSystem } from "@/lib/types";
+import type { UserProfile, UnitSystem, WeightDisplayPreference } from "@/lib/types";
 import { MAIN_LIFTS, MainLiftId, DAYS_OF_WEEK, DayOfWeek, DEFAULT_TRAINING_MAX_PERCENTAGE } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { calculateTrainingMax, roundToNearestPlate } from "@/lib/wendler";
@@ -45,6 +45,8 @@ import { Separator } from "./ui/separator";
 
 const mainLiftIds = MAIN_LIFTS.map(lift => lift.id) as [MainLiftId, ...MainLiftId[]];
 const unitSystems = ['metric', 'imperial'] as [UnitSystem, ...UnitSystem[]];
+const weightDisplayPreferences = ['total', 'platesPerSide'] as [WeightDisplayPreference, ...WeightDisplayPreference[]];
+
 
 const profileFormSchema = z.object({
   name: z.string().optional(),
@@ -53,6 +55,9 @@ const profileFormSchema = z.object({
   }),
   unitSystem: z.enum(unitSystems, {
     required_error: "Please select a unit system (kg or lb)."
+  }),
+  weightDisplayPreference: z.enum(weightDisplayPreferences, {
+    required_error: "Please select a weight display preference."
   }),
   oneRepMaxes: z.object(
     MAIN_LIFTS.reduce((acc, lift) => {
@@ -93,12 +98,13 @@ export function UserProfileForm() {
   
   const initialFormValues: ProfileFormValues = useMemo(() => ({
     name: "",
-    unitSystem: 'metric', // Default to metric
+    unitSystem: 'metric', 
+    weightDisplayPreference: 'total',
     oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
       acc[lift.id] = 0;
       return acc;
     }, {} as Record<MainLiftId, number>),
-    startDate: undefined, // Initialize as undefined, will be set in useEffect
+    startDate: undefined, 
     workoutSelections: initialWorkoutSelections,
   }), []);
 
@@ -109,8 +115,6 @@ export function UserProfileForm() {
   });
   
   useEffect(() => {
-    // This effect runs when `profile` changes (e.g., loaded from localStorage or after reset)
-    // or when the component mounts and `initialFormValues` are available.
     if (profile) {
         const loadedSelections = DAYS_OF_WEEK.map(dayOfWeek => {
             const assignment = profile.workoutSchedule?.find(ws => ws.day === dayOfWeek);
@@ -123,6 +127,7 @@ export function UserProfileForm() {
         form.reset({
             name: profile.name ?? "",
             unitSystem: profile.unitSystem || 'metric',
+            weightDisplayPreference: profile.weightDisplayPreference || 'total',
             oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
                 acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
                 return acc;
@@ -131,11 +136,9 @@ export function UserProfileForm() {
             workoutSelections: loadedSelections.length > 0 ? loadedSelections : initialWorkoutSelections,
         });
     } else {
-        // No profile exists (e.g., first load and nothing in localStorage)
-        // Reset to initialFormValues, but ensure startDate gets new Date()
         form.reset({
             ...initialFormValues,
-            startDate: new Date(), // Ensure new profiles default to today
+            startDate: new Date(), 
         });
     }
   }, [profile, form, initialFormValues]);
@@ -148,7 +151,7 @@ export function UserProfileForm() {
 
   const calculatedTrainingMaxes = useMemo(() => {
     return MAIN_LIFTS.reduce((acc, lift) => {
-      const orm = watchedOneRepMaxes[lift.id];
+      const orm = watchedOneRepMaxes[lift.id] || 0; // Ensure orm is a number
       acc[lift.id] = roundToNearestPlate(calculateTrainingMax(orm));
       return acc;
     }, {} as Record<MainLiftId, number>);
@@ -177,6 +180,7 @@ export function UserProfileForm() {
       name: data.name ?? "",
       startDate: format(data.startDate, "yyyy-MM-dd"),
       unitSystem: data.unitSystem,
+      weightDisplayPreference: data.weightDisplayPreference,
       oneRepMaxes: data.oneRepMaxes,
       trainingMaxes: calculatedTrainingMaxes, 
       workoutSchedule: workoutSchedule,
@@ -236,30 +240,57 @@ export function UserProfileForm() {
               )}
             />
             
-            <FormField
-              control={form.control}
-              name="unitSystem"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Unit System</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select unit system" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="metric">Metric (kg)</SelectItem>
-                      <SelectItem value="imperial">Imperial (lb)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Choose the unit system for weights.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="unitSystem"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit System</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? 'metric'} defaultValue={field.value ?? 'metric'}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select unit system" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="metric">Metric (kg)</SelectItem>
+                        <SelectItem value="imperial">Imperial (lb)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Choose the unit system for weights.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="weightDisplayPreference"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Weight Display</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? 'total'} defaultValue={field.value ?? 'total'}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select display preference" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="total">Total Weight (Barbell + Plates)</SelectItem>
+                        <SelectItem value="platesPerSide">Plates Per Side (Assumes 45lb/20kg Bar)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      How weights are shown on workout cards.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
 
             <div className="space-y-6">
               <div>
@@ -282,7 +313,7 @@ export function UserProfileForm() {
                             type="number"
                             placeholder={`Enter ${lift.name} 1RM`}
                             {...field}
-                            value={field.value === undefined ? '' : String(field.value)}
+                            value={field.value === undefined || field.value === null ? '' : String(field.value)}
                             onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
                             min="0"
                             step="0.5"

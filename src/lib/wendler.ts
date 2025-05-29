@@ -4,8 +4,8 @@ import type { UserProfile, WorkoutCycle, WeeklyWorkout, DailyWorkout, WorkoutSet
 import { DEFAULT_TRAINING_MAX_PERCENTAGE, MAIN_LIFTS, WENDLER_WEEK_CONFIGS, DAYS_OF_WEEK, DayOfWeek } from './constants';
 
 // Helper to round to nearest 2.5 (common for weight plates)
-export function roundToNearestPlate(weight: number, plateIncrement: number = 2.5): number {
-  return Math.round(weight / plateIncrement) * plateIncrement;
+export function roundToNearestPlate(weight: number, increment: number = 2.5): number {
+  return Math.round(weight / increment) * increment;
 }
 
 export function calculateTrainingMax(oneRepMax: number, percentage: number = DEFAULT_TRAINING_MAX_PERCENTAGE): number {
@@ -16,7 +16,6 @@ export function calculateWendlerCycle(profile: UserProfile, cycleNumber: number 
   const cycleStartDate = parseISO(profile.startDate);
   const currentCycleStartDate = addWeeks(cycleStartDate, (cycleNumber - 1) * 4);
 
-  // Sort user's workout schedule by the order in DAYS_OF_WEEK for consistent processing
   const sortedSchedule = [...profile.workoutSchedule].sort(
     (a, b) => DAYS_OF_WEEK.indexOf(a.day) - DAYS_OF_WEEK.indexOf(b.day)
   );
@@ -29,9 +28,8 @@ export function calculateWendlerCycle(profile: UserProfile, cycleNumber: number 
       const mainLiftId = assignment.lift;
       const trainingMax = profile.trainingMaxes[mainLiftId];
       const workoutDayOfWeek = assignment.day;
-      const dayOfWeekIndex = DAYS_OF_WEEK.indexOf(workoutDayOfWeek); // 0 for Sunday, 1 for Monday, etc.
+      const dayOfWeekIndex = DAYS_OF_WEEK.indexOf(workoutDayOfWeek); 
 
-      // Calculate the date for this workout within the current week of the cycle
       const dayOffset = (dayOfWeekIndex - getDay(weekStartDateForCalc) + 7) % 7;
       const workoutDate = addDays(weekStartDateForCalc, dayOffset);
 
@@ -51,7 +49,6 @@ export function calculateWendlerCycle(profile: UserProfile, cycleNumber: number 
       });
     }
 
-    // Sort daily workouts by date within the week (important if schedule wasn't perfectly sorted or for other reasons)
     dailyWorkouts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     return {
@@ -61,7 +58,7 @@ export function calculateWendlerCycle(profile: UserProfile, cycleNumber: number 
     };
   });
 
-  const cycleEndDate = addDays(addWeeks(currentCycleStartDate, 4), -1); // End of 4th week
+  const cycleEndDate = addDays(addWeeks(currentCycleStartDate, 4), -1); 
 
   return {
     cycleNumber,
@@ -76,16 +73,14 @@ export function getCurrentCycleAndWeek(profile: UserProfile, currentDate: Date =
   if (!profile.startDate || !profile.workoutSchedule || profile.workoutSchedule.length === 0) return null;
 
   const startDate = parseISO(profile.startDate);
-  // Ensure weekStartsOn aligns with how getDay() works (Sunday as 0)
-  // If your profile.startDate can be any day, and you want weeks to "start" on that day of week for calculation:
   const weekStartsOn = getDay(startDate) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
   const totalWeeksPassed = differenceInCalendarWeeks(currentDate, startDate, { weekStartsOn });
 
 
-  if (totalWeeksPassed < 0) return null; // Current date is before start date
+  if (totalWeeksPassed < 0) return null; 
 
-  const cycleNumber = Math.floor(totalWeeksPassed / WENDLER_WEEK_CONFIGS.length) + 1; // WENDLER_CYCLE_WEEKS is 4
-  const weekIndexInCycle = totalWeeksPassed % WENDLER_WEEK_CONFIGS.length; // 0-indexed
+  const cycleNumber = Math.floor(totalWeeksPassed / WENDLER_WEEK_CONFIGS.length) + 1; 
+  const weekIndexInCycle = totalWeeksPassed % WENDLER_WEEK_CONFIGS.length; 
 
   const cycle = calculateWendlerCycle(profile, cycleNumber);
   if (!cycle || weekIndexInCycle >= cycle.weeks.length) return null;
@@ -108,23 +103,51 @@ export function getWeekWorkouts(profile: UserProfile, cycleNumber: number, weekN
   return weekData ? weekData.days : null;
 }
 
-/**
- * Calculates Estimated 1 Rep Max (e1RM) using the Brzycki formula.
- * @param weight The weight lifted.
- * @param reps The number of repetitions performed.
- * @returns The calculated e1RM, rounded to the nearest plate increment, or 0 if reps are invalid.
- */
 export function calculateE1RM(weight: number, reps: number): number {
-  if (reps <= 0) return 0; // Invalid input for Brzycki
+  if (reps <= 0) return 0; 
   if (reps === 1) return roundToNearestPlate(weight);
-
-  // Brzycki formula: Weight / (1.0278 - 0.0278 * Reps)
   const denominator = 1.0278 - 0.0278 * reps;
-
-  if (denominator <= 0) {
-    return 0;
-  }
-
+  if (denominator <= 0) return 0;
   const estimatedMax = weight / denominator;
   return roundToNearestPlate(estimatedMax);
+}
+
+const BARBELL_REFERENCE_LB = 45;
+const LB_TO_KG_CONVERSION_FACTOR = 2.20462;
+
+export function formatDisplayWeight(
+  totalWeightInput: number, // This is the actual target weight, already in the user's chosen unit system and rounded by roundToNearestPlate
+  profile: UserProfile | null
+): string {
+  if (!profile) return `${totalWeightInput} units`; // Fallback, totalWeightInput is already rounded
+
+  const unitSuffix = profile.unitSystem === 'metric' ? 'kg' : 'lb';
+
+  if (profile.weightDisplayPreference === 'platesPerSide') {
+    let barbellWeightInCurrentUnit: number;
+
+    if (profile.unitSystem === 'metric') {
+      // Convert the 45lb reference bar to kg for calculation
+      barbellWeightInCurrentUnit = roundToNearestPlate(BARBELL_REFERENCE_LB / LB_TO_KG_CONVERSION_FACTOR, 0.5); // e.g. 20.5 kg
+    } else {
+      // User is in imperial, bar reference is 45lb
+      barbellWeightInCurrentUnit = BARBELL_REFERENCE_LB; // 45 lb
+    }
+
+    // totalWeightInput is already rounded (e.g. to 2.5 increments)
+    if (totalWeightInput <= barbellWeightInCurrentUnit) {
+      return `${totalWeightInput} ${unitSuffix} (Barbell)`;
+    } else {
+      const platesTotalWeight = totalWeightInput - barbellWeightInCurrentUnit;
+      // Plates per side value should also be rounded to a sensible number, e.g., 0.25 for lbs, 0.125 for kgs, or just use roundToNearestPlate with its default
+      const platesPerSideValue = roundToNearestPlate(platesTotalWeight / 2); 
+      
+      if (platesPerSideValue <= 0) { 
+          return `${totalWeightInput} ${unitSuffix} (Barbell)`;
+      }
+      return `${platesPerSideValue} ${unitSuffix} per side`;
+    }
+  } else { // 'total'
+    return `${totalWeightInput} ${unitSuffix}`;
+  }
 }

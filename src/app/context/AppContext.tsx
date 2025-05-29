@@ -3,7 +3,7 @@
 
 import type React from 'react';
 import { createContext, useState, useEffect, useCallback } from 'react';
-import type { UserProfile, WorkoutLogEntry, WorkoutCycle, UnitSystem } from '@/lib/types';
+import type { UserProfile, WorkoutLogEntry, WorkoutCycle, UnitSystem, WeightDisplayPreference } from '@/lib/types';
 import { calculateWendlerCycle } from '@/lib/wendler';
 import { MAIN_LIFTS, MainLiftId } from '@/lib/constants';
 import { format } from 'date-fns';
@@ -21,7 +21,7 @@ export interface AppContextType {
   isLoading: boolean;
   activeCycleNumber: number;
   setActiveCycleNumber: (cycleNum: number) => void;
-  recalculateCycle: () => void;
+  recalculateCycle: () => void; // This might be redundant now with the useEffect for profile
   resetProgress: () => void;
 }
 
@@ -41,13 +41,14 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const storedProfile = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
       if (storedProfile) {
         const parsedProfile = JSON.parse(storedProfile) as UserProfile;
-        // Ensure workoutSchedule exists, default to empty array if not (for backward compatibility)
         if (!parsedProfile.workoutSchedule) {
             parsedProfile.workoutSchedule = [];
         }
-        // Ensure unitSystem exists, default to metric if not
         if (!parsedProfile.unitSystem) {
             parsedProfile.unitSystem = 'metric';
+        }
+        if (!parsedProfile.weightDisplayPreference) {
+            parsedProfile.weightDisplayPreference = 'total'; // Default for older profiles
         }
         setProfileState(parsedProfile);
       }
@@ -59,14 +60,32 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.error("Failed to load data from localStorage", error);
       localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
       localStorage.removeItem(LOCAL_STORAGE_LOGS_KEY);
-      setProfileState(null);
+      // Set to a default initial state rather than null to avoid issues with form defaults
+      const initialOneRepMaxes = MAIN_LIFTS.reduce((acc, lift) => {
+          acc[lift.id] = 0;
+          return acc;
+        }, {} as Record<MainLiftId, number>);
+      const initialTrainingMaxes = MAIN_LIFTS.reduce((acc, lift) => {
+        acc[lift.id] = 0;
+        return acc;
+      }, {} as Record<MainLiftId, number>);
+      setProfileState({
+        id: "currentUser",
+        name: "",
+        startDate: format(new Date(), "yyyy-MM-dd"),
+        unitSystem: 'metric',
+        weightDisplayPreference: 'total',
+        workoutSchedule: [],
+        oneRepMaxes: initialOneRepMaxes,
+        trainingMaxes: initialTrainingMaxes,
+      });
       setWorkoutLogsState([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Centralized effect to calculate/recalculate Wendler cycle
+  // Centralized effect to calculate/recalculate Wendler cycle whenever profile or activeCycleNumber changes
   useEffect(() => {
     if (profile && profile.startDate && profile.workoutSchedule && profile.workoutSchedule.length > 0) {
       setCurrentCycleData(calculateWendlerCycle(profile, activeCycleNumber));
@@ -76,7 +95,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [profile, activeCycleNumber]);
 
   const setProfile = useCallback((newProfile: UserProfile | null) => {
-    setProfileState(newProfile);
+    setProfileState(newProfile); // This will trigger the useEffect above to recalculate the cycle
     if (newProfile) {
       localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(newProfile));
     } else {
@@ -93,10 +112,12 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const setActiveCycleNumber = useCallback((cycleNum: number) => {
-    setActiveCycleNumberState(cycleNum);
+    setActiveCycleNumberState(cycleNum); // This will trigger the useEffect above to recalculate cycle for new active number
   }, []);
-
+  
   const recalculateCycle = useCallback(() => {
+    // This function is now effectively handled by the useEffect that listens to profile and activeCycleNumber.
+    // It can be kept for explicit calls if needed elsewhere, but its primary role is covered.
     if (profile && profile.startDate && profile.workoutSchedule && profile.workoutSchedule.length > 0) {
       setCurrentCycleData(calculateWendlerCycle(profile, activeCycleNumber));
     } else {
@@ -104,13 +125,13 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [profile, activeCycleNumber]);
 
+
   const updateWorkoutLogInCycle = useCallback((date: string, mainLiftId: MainLiftId, completedSetsData: WorkoutLogEntry['completedSets']) => {
     let workoutFoundAndUpdated = false;
-    // Step 1: Update the currentCycleData state (purely)
+    
     setCurrentCycleData(prevCycle => {
       if (!prevCycle) return null;
-
-      const newCycle = JSON.parse(JSON.stringify(prevCycle)) as WorkoutCycle; // Deep copy
+      const newCycle = JSON.parse(JSON.stringify(prevCycle)) as WorkoutCycle;
       
       for (const week of newCycle.weeks) {
         for (const day of week.days) {
@@ -124,7 +145,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               );
               return completedSetInfo ? { ...set, completedReps: completedSetInfo.actualReps } : set;
             });
-            workoutFoundAndUpdated = true; // Mark that we found and updated the workout
+            workoutFoundAndUpdated = true;
             break;
           }
         }
@@ -133,11 +154,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return workoutFoundAndUpdated ? newCycle : prevCycle;
     });
 
-    // Step 2: Log the workout (side effect), only if the workout was part of the current cycle data.
-    if (profile && workoutFoundAndUpdated) { // Check workoutFoundAndUpdated
+    if (profile && workoutFoundAndUpdated) {
         const logId = `${date}-${mainLiftId}-${new Date().getTime()}`;
         const trainingMaxUsed = profile.trainingMaxes[mainLiftId];
-
         addWorkoutLog({
           logId,
           date,
@@ -146,9 +165,6 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           trainingMaxUsed,
         });
     } else if (profile && !workoutFoundAndUpdated) {
-        // This case could happen if logging a workout not in the currently displayed cycle (e.g., past/future)
-        // For now, we'll still log it if the profile exists.
-        // A more sophisticated system might handle this differently.
         const logId = `${date}-${mainLiftId}-${new Date().getTime()}`;
         const trainingMaxUsed = profile.trainingMaxes[mainLiftId];
          addWorkoutLog({
@@ -180,8 +196,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const resetProfileData: UserProfile = {
         id: profile?.id || "currentUser",
         name: profile?.name ?? "",
-        unitSystem: 'metric', // Default to metric on reset
-        workoutSchedule: [], // Reset schedule
+        unitSystem: 'metric', 
+        weightDisplayPreference: 'total', // Default on reset
+        workoutSchedule: [], 
         oneRepMaxes: initialOneRepMaxes,
         trainingMaxes: initialTrainingMaxes,
         startDate: format(new Date(), "yyyy-MM-dd"),
