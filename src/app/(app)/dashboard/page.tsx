@@ -7,103 +7,83 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { format, parseISO, isToday as fnsIsToday, addWeeks, subWeeks, getYear, getTime } from "date-fns";
+import { format, parseISO, isToday as fnsIsToday, addWeeks, subWeeks, getYear, getTime, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
 import { useState, useEffect } from "react";
 import type { DailyWorkout } from "@/lib/types";
 
 export default function DashboardPage() {
-  const { profile, isLoading, currentCycleData, activeCycleNumber, setActiveCycleNumber, recalculateCycle } = useAppContext();
+  const { profile, isLoading, currentCycleData, activeCycleNumber, setActiveCycleNumber } = useAppContext();
   const [currentDisplayDate, setCurrentDisplayDate] = useState<Date | null>(null);
   const [workoutsForWeek, setWorkoutsForWeek] = useState<DailyWorkout[]>([]);
 
   useEffect(() => {
-    // Set initial display date only on client side to prevent hydration mismatch
     setCurrentDisplayDate(new Date());
   }, []);
 
   useEffect(() => {
-    if (!currentDisplayDate || !currentCycleData) {
+    if (!currentDisplayDate || !currentCycleData || !profile?.startDate) {
       setWorkoutsForWeek([]);
       return;
     }
-
-    // Find the week that contains currentDisplayDate
-    const displayWeekStart = parseISO(currentCycleData.startDate); // This is cycle start
-    const weekOffset = Math.floor(
-      (currentDisplayDate.getTime() - displayWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-    );
-    
-    const targetWeekIndex = weekOffset % 4; // week index within the cycle (0-3)
-    
-    if (currentCycleData.weeks && currentCycleData.weeks[targetWeekIndex]) {
-       setWorkoutsForWeek(currentCycleData.weeks[targetWeekIndex].days);
-    } else {
-       // If currentDisplayDate is outside the current cycle's range, try to adjust cycle or show empty
-       const newCycleNum = Math.floor(weekOffset / 4) + 1;
-       if(newCycleNum !== activeCycleNumber) {
-          setActiveCycleNumber(newCycleNum); // This will trigger re-fetch of cycle data
-       } else {
-          setWorkoutsForWeek([]); // Default to empty if week not found
-       }
-    }
-  }, [currentCycleData, currentDisplayDate, activeCycleNumber, setActiveCycleNumber]);
   
-  // This effect runs when activeCycleNumber changes, ensuring currentDisplayDate aligns with the new cycle's start.
-  useEffect(() => {
-    if (profile?.startDate) {
-      const cycleStartDate = addWeeks(parseISO(profile.startDate), (activeCycleNumber - 1) * 4);
-      setCurrentDisplayDate(cycleStartDate);
-      // recalculateCycle is called from useAppContext when activeCycleNumber changes, 
-      // or can be explicitly called if needed after state updates.
-      // For now, relying on its dependency on activeCycleNumber in AppContext.
-      // If direct call needed: recalculateCycle(); 
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCycleNumber, profile?.startDate]);
-  // Note: `recalculateCycle` is stable from context or depends on profile/activeCycleNumber, 
-  // so direct inclusion here might cause issues if not memoized perfectly.
+    // Determine the start of the week for currentDisplayDate, respecting profile's cycle start day of week
+    const cycleStartDateObj = parseISO(profile.startDate);
+    const weekOptions = { weekStartsOn: getDay(cycleStartDateObj) as 0 | 1 | 2 | 3 | 4 | 5 | 6 };
+    
+    const displayWeekStart = startOfWeek(currentDisplayDate, weekOptions);
+    const displayWeekEnd = endOfWeek(currentDisplayDate, weekOptions);
 
+    // Filter workouts from currentCycleData that fall within this display week
+    const allCycleWorkouts = currentCycleData.weeks.flatMap(w => w.days);
+    const relevantWorkouts = allCycleWorkouts.filter(workout => {
+        const workoutDate = parseISO(workout.date);
+        return workoutDate >= displayWeekStart && workoutDate <= displayWeekEnd;
+    });
+    
+    setWorkoutsForWeek(relevantWorkouts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+
+    // Adjust activeCycleNumber if currentDisplayDate falls outside the active cycle's range
+    const cycleDurationWeeks = currentCycleData.weeks.length; // Should be 4 for Wendler
+    const firstDayOfCurrentCycle = parseISO(currentCycleData.startDate);
+    const lastDayOfCurrentCycle = addWeeks(firstDayOfCurrentCycle, cycleDurationWeeks-1); // Approx end, could be more precise
+    
+    if (currentDisplayDate < firstDayOfCurrentCycle) {
+        const diffWeeks = Math.ceil((firstDayOfCurrentCycle.getTime() - currentDisplayDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        const cyclesToGoBack = Math.ceil(diffWeeks / cycleDurationWeeks);
+        if (activeCycleNumber - cyclesToGoBack >= 1) {
+            setActiveCycleNumber(activeCycleNumber - cyclesToGoBack);
+        } else if (activeCycleNumber !== 1) {
+            setActiveCycleNumber(1);
+        }
+    } else if (currentDisplayDate > endOfWeek(lastDayOfCurrentCycle, weekOptions)) { // Check if display date is beyond the current cycle
+        const diffWeeks = Math.floor((currentDisplayDate.getTime() - firstDayOfCurrentCycle.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        const cyclesToAdvance = Math.floor(diffWeeks / cycleDurationWeeks);
+        setActiveCycleNumber(activeCycleNumber + cyclesToAdvance);
+    }
+
+  }, [currentCycleData, currentDisplayDate, profile?.startDate, activeCycleNumber, setActiveCycleNumber]);
+  
 
   const handlePreviousWeek = () => {
     if (!currentDisplayDate || !profile?.startDate) return;
     const newDate = subWeeks(currentDisplayDate, 1);
+    
+    // Prevent going to a cycle before cycle 1 effectively.
+    // The cycle adjustment logic in useEffect should handle clamping to cycle 1.
     const cycleStartDate = parseISO(profile.startDate);
-    
-    // Calculate what cycle newDate would fall into
-    const absoluteWeekOffset = Math.floor((newDate.getTime() - cycleStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    const newPotentialCycleNum = Math.floor(absoluteWeekOffset / 4) + 1;
-
-    // Prevent going to a cycle before cycle 1
-    if (newPotentialCycleNum < 1 && activeCycleNumber === 1) {
-        // If already in cycle 1 and trying to go to a week before cycle 1 starts, clamp to cycle 1 start.
-        // This check might need adjustment based on exact definition of "before cycle 1"
-        if (newDate < cycleStartDate) {
-            setCurrentDisplayDate(cycleStartDate); // Go to start of cycle 1
-            if (activeCycleNumber !== 1) setActiveCycleNumber(1);
-            return;
-        }
-    }
-    
-    setCurrentDisplayDate(newDate);
-    if (newPotentialCycleNum !== activeCycleNumber && newPotentialCycleNum > 0) {
-      setActiveCycleNumber(newPotentialCycleNum);
+    if (newDate < startOfWeek(cycleStartDate, { weekStartsOn: getDay(cycleStartDate) as 0 | 1 | 2 | 3 | 4 | 5 | 6 }) && activeCycleNumber === 1) {
+      setCurrentDisplayDate(cycleStartDate); // Go to start of cycle 1
+    } else {
+      setCurrentDisplayDate(newDate);
     }
   };
 
   const handleNextWeek = () => {
-    if (!currentDisplayDate || !profile?.startDate) return;
-    const newDate = addWeeks(currentDisplayDate, 1);
-    setCurrentDisplayDate(newDate);
-
-    const cycleStartDate = parseISO(profile.startDate);
-    const weekOffset = Math.floor((newDate.getTime() - cycleStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    const newCycleNum = Math.floor(weekOffset / 4) + 1;
-    if (newCycleNum !== activeCycleNumber) {
-      setActiveCycleNumber(newCycleNum);
-    }
+    if (!currentDisplayDate) return;
+    setCurrentDisplayDate(addWeeks(currentDisplayDate, 1));
   };
 
-  if (isLoading || !currentDisplayDate) { // Added !currentDisplayDate check
+  if (isLoading || !currentDisplayDate) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -129,25 +109,34 @@ export default function DashboardPage() {
     );
   }
   
-  const weekName = currentDisplayDate && currentCycleData?.weeks.find(w => 
-    w.days.some(d => {
-      const dayDate = parseISO(d.date);
-      // Check if dayDate is in the same week as currentDisplayDate
-      return getYear(dayDate) === getYear(currentDisplayDate) &&
-             Math.floor((getTime(dayDate) - new Date(getYear(currentDisplayDate), 0, 1).getTime()) / (7*24*60*60*1000)) === 
-             Math.floor((getTime(currentDisplayDate) - new Date(getYear(currentDisplayDate), 0, 1).getTime()) / (7*24*60*60*1000));
-    })
-  )?.weekName || "";
-
+  let weekName = "";
   let displayWeekStartDateString = "Loading date...";
+
   if (workoutsForWeek.length > 0 && workoutsForWeek[0].date) {
-      displayWeekStartDateString = format(parseISO(workoutsForWeek[0].date), "MMMM d, yyyy");
-  } else if (currentDisplayDate) {
-      displayWeekStartDateString = format(currentDisplayDate, "MMMM d, yyyy");
+      const firstWorkoutDate = parseISO(workoutsForWeek[0].date);
+      displayWeekStartDateString = format(startOfWeek(firstWorkoutDate, { weekStartsOn: getDay(parseISO(profile.startDate)) as 0|1|2|3|4|5|6 }), "MMMM d, yyyy");
+      
+      // Try to get week name from the currentCycleData based on one of the workouts in workoutsForWeek
+      const sampleWorkout = workoutsForWeek[0];
+      const cycleWeek = currentCycleData?.weeks.find(w => w.days.some(d => d.date === sampleWorkout.date && d.mainLift === sampleWorkout.mainLift));
+      if (cycleWeek) {
+          weekName = cycleWeek.weekName;
+      }
+  } else if (currentDisplayDate && profile.startDate) {
+       displayWeekStartDateString = format(startOfWeek(currentDisplayDate, { weekStartsOn: getDay(parseISO(profile.startDate)) as 0|1|2|3|4|5|6 }), "MMMM d, yyyy");
+       // Attempt to find week name based on currentDisplayDate relative to cycle start
+       if (currentCycleData) {
+         const diffWeeks = Math.floor((currentDisplayDate.getTime() - parseISO(currentCycleData.startDate).getTime()) / (7*24*60*60*1000));
+         const weekIndexInCycle = diffWeeks % currentCycleData.weeks.length;
+         if (weekIndexInCycle >= 0 && weekIndexInCycle < currentCycleData.weeks.length) {
+           weekName = currentCycleData.weeks[weekIndexInCycle].weekName;
+         }
+       }
   }
   
   const isPreviousButtonDisabled = !currentDisplayDate || !profile?.startDate ||
-    (activeCycleNumber === 1 && currentDisplayDate && parseISO(profile.startDate) >= currentDisplayDate);
+    (activeCycleNumber === 1 && currentDisplayDate && parseISO(profile.startDate) >= currentDisplayDate &&
+     startOfWeek(currentDisplayDate, { weekStartsOn: getDay(parseISO(profile.startDate)) as 0|1|2|3|4|5|6 }) <= startOfWeek(parseISO(profile.startDate), { weekStartsOn: getDay(parseISO(profile.startDate)) as 0|1|2|3|4|5|6 }));
 
 
   return (
@@ -169,7 +158,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {currentCycleData && workoutsForWeek.length > 0 ? (
+      {workoutsForWeek.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {workoutsForWeek.map((workout) => (
             <WorkoutCard 
@@ -186,11 +175,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">
-              There are no workouts scheduled for this week in the current cycle, or your profile might need adjustment.
+              There are no workouts scheduled for this week in the current cycle. This might be a rest week, or your profile may need configuration.
             </p>
-            {(!profile.workoutDays || profile.workoutDays.length === 0) && (
+            {(!profile.workoutSchedule || profile.workoutSchedule.length === 0) && (
                  <Button asChild variant="link" className="p-0 h-auto mt-2">
-                    <Link href="/profile">Please configure your workout days in your profile.</Link>
+                    <Link href="/profile">Please configure your workout days and lifts in your profile.</Link>
                  </Button>
             )}
           </CardContent>

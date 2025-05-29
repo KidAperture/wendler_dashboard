@@ -1,10 +1,12 @@
+
 import type { DayOfWeek, MainLiftId } from "./constants";
 
 export interface UserProfile {
   id: string; // Typically a unique ID, can be a constant for single-user context
   name?: string;
   startDate: string; // ISO Date string
-  workoutDays: DayOfWeek[];
+  // workoutDays: DayOfWeek[]; // Replaced by workoutSchedule
+  workoutSchedule: Array<{ day: DayOfWeek; lift: MainLiftId }>;
   trainingMaxes: Record<MainLiftId, number>;
   // Represents 1RMs
   oneRepMaxes: Record<MainLiftId, number>;
