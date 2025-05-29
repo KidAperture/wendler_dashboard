@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -45,7 +45,7 @@ const profileFormSchema = z.object({
   name: z.string().optional(),
   startDate: z.date({
     required_error: "A start date is required.",
-  }),
+  }).optional(), // Made optional to handle undefined initial state for new profiles
   oneRepMaxes: z.object(
     MAIN_LIFTS.reduce((acc, lift) => {
       acc[lift.id] = z.coerce.number().min(0, `${lift.name} max can be 0 if unknown, but not negative.`); // Allow 0
@@ -67,7 +67,7 @@ const initialFormValues: ProfileFormValues = {
     return acc;
   }, {} as Record<MainLiftId, number>),
   workoutDays: [],
-  startDate: new Date(), 
+  startDate: undefined, // Initialize startDate as undefined for client-side setting
 };
 
 export function UserProfileForm() {
@@ -76,41 +76,54 @@ export function UserProfileForm() {
   const router = useRouter();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [initialStartDate, setInitialStartDate] = useState<Date | undefined>(undefined);
+
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
-    defaultValues: profile
-      ? {
-          name: profile.name ?? "",
-          oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
-            acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
-            return acc;
-          }, {} as Record<MainLiftId, number>),
-          startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
-          workoutDays: profile.workoutDays || [],
-        }
-      : initialFormValues,
+    defaultValues: initialFormValues, // Start with base initial values
   });
 
   useEffect(() => {
-    // Sync form with profile data from context when it changes (e.g., after reset)
+    // Effect to initialize form when profile loads or changes (e.g., after reset)
     if (profile) {
-      form.reset({
+      const loadedValues = {
         name: profile.name ?? "",
         oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
           acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
           return acc;
         }, {} as Record<MainLiftId, number>),
-        startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
+        startDate: profile.startDate ? parseISO(profile.startDate) : new Date(), // Use current date if missing for some reason
         workoutDays: profile.workoutDays || [],
-      });
+      };
+      form.reset(loadedValues);
+      setInitialStartDate(loadedValues.startDate); // Keep track of initial start date from profile
     } else {
-      form.reset(initialFormValues);
+      // No profile, this means it's a new setup
+      form.reset(initialFormValues); // Reset to truly empty initial values
+      setInitialStartDate(new Date()); // For new profile, default startDate to today on client
     }
   }, [profile, form]);
 
+   useEffect(() => {
+    // Effect to set start date on client side if it was initially undefined
+    // This typically runs for a brand new profile after the initial client render
+    if (!form.getValues('startDate') && initialStartDate) {
+      form.setValue('startDate', initialStartDate, { shouldValidate: true });
+    }
+  }, [form, initialStartDate]);
+
 
   function onSubmit(data: ProfileFormValues) {
+    if (!data.startDate) {
+        toast({
+            title: "Missing Start Date",
+            description: "Please select a start date for your cycle.",
+            variant: "destructive",
+        });
+        return;
+    }
+
     const trainingMaxes = MAIN_LIFTS.reduce((acc, lift) => {
         acc[lift.id] = calculateTrainingMax(data.oneRepMaxes[lift.id]);
         return acc;
@@ -118,7 +131,7 @@ export function UserProfileForm() {
 
     const newProfile: UserProfile = {
       id: profile?.id || "currentUser", 
-      name: data.name,
+      name: data.name ?? "", // Ensure name is not undefined
       startDate: format(data.startDate, "yyyy-MM-dd"),
       oneRepMaxes: data.oneRepMaxes,
       trainingMaxes: trainingMaxes,
@@ -137,7 +150,7 @@ export function UserProfileForm() {
   const handleResetProgress = async () => {
     setIsResetting(true);
     try {
-      await resetAppContextProgress(); // Assuming resetAppContextProgress could be async if it involved API calls, though here it's sync
+      await resetAppContextProgress(); 
       toast({
         title: "Progress Reset",
         description: "Your workout history and maxes have been cleared. You can now start over.",
@@ -193,7 +206,7 @@ export function UserProfileForm() {
                           type="number" 
                           placeholder={`Enter ${lift.name} 1RM`} 
                           {...field} 
-                          value={field.value ?? 0}
+                          value={field.value ?? 0} // Ensure value is never undefined
                           onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
                           min="0"
                         />
@@ -235,6 +248,7 @@ export function UserProfileForm() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
+                        disabled={(date) => date < new Date("1900-01-01")} // Example: prevent very past dates
                         initialFocus
                       />
                     </PopoverContent>
