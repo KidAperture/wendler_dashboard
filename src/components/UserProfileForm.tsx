@@ -49,15 +49,14 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-// Initialize startDate as undefined to prevent hydration mismatch.
-// It will be set by useEffect on the client if it's a new profile.
 const defaultValues: Partial<ProfileFormValues> = {
+  name: "", // Ensure name is initialized to empty string for controlled input
   oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
     acc[lift.id] = 0;
     return acc;
   }, {} as Record<typeof MAIN_LIFTS[number]["id"], number>),
   workoutDays: [],
-  startDate: undefined, // Set to undefined initially
+  startDate: undefined, 
 };
 
 export function UserProfileForm() {
@@ -69,18 +68,23 @@ export function UserProfileForm() {
     resolver: zodResolver(profileFormSchema),
     defaultValues: profile ? {
       ...profile,
-      startDate: profile.startDate ? parseISO(profile.startDate) : undefined, // Use undefined if profile.startDate is not set
+      name: profile.name ?? "", // Ensure name is empty string if null/undefined from profile
+      oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
+        acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0; // Default to 0 if specific lift max is missing
+        return acc;
+      }, {} as Record<MainLiftId, number>),
+      startDate: profile.startDate ? parseISO(profile.startDate) : undefined, 
     } : defaultValues,
   });
 
   const { setValue, getValues } = form;
 
   useEffect(() => {
-    // Set initial date on client-side for new profiles only if no date is already set
-    if (!getValues('startDate')) {
-      setValue('startDate', new Date(), { shouldValidate: false, shouldDirty: false });
+    if (!getValues('startDate') && !profile?.startDate) { // Only set if no date is present at all
+      setValue('startDate', new Date(), { shouldValidate: true, shouldDirty: true });
     }
-  }, [setValue, getValues, profile]); // Re-run if profile changes, to ensure new Date() is only set if profile still doesn't provide one.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.startDate, getValues, setValue]); // Depend on profile.startDate to re-evaluate if profile loads later
 
   function onSubmit(data: ProfileFormValues) {
     const trainingMaxes = MAIN_LIFTS.reduce((acc, lift) => {
@@ -89,7 +93,7 @@ export function UserProfileForm() {
     }, {} as Record<typeof MAIN_LIFTS[number]["id"], number>);
 
     const newProfile: UserProfile = {
-      id: profile?.id || "currentUser", // Simple ID for single user context
+      id: profile?.id || "currentUser", 
       name: data.name,
       startDate: format(data.startDate, "yyyy-MM-dd"),
       oneRepMaxes: data.oneRepMaxes,
@@ -97,7 +101,7 @@ export function UserProfileForm() {
       workoutDays: data.workoutDays as DayOfWeek[],
     };
     setProfile(newProfile);
-    recalculateCycle(); // Recalculate cycle based on new profile
+    recalculateCycle(); 
     
     toast({
       title: "Profile Saved",
@@ -122,7 +126,7 @@ export function UserProfileForm() {
                 <FormItem>
                   <FormLabel>Name (Optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="Your Name" {...field} />
+                    <Input placeholder="Your Name" {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -139,7 +143,11 @@ export function UserProfileForm() {
                     <FormItem>
                       <FormLabel>{lift.name} 1RM (kg/lb)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder={`Enter ${lift.name} 1RM`} {...field} 
+                        <Input 
+                          type="number" 
+                          placeholder={`Enter ${lift.name} 1RM`} 
+                          {...field} 
+                          value={field.value ?? 0}
                           onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
                         />
                       </FormControl>
@@ -181,7 +189,7 @@ export function UserProfileForm() {
                         selected={field.value}
                         onSelect={field.onChange}
                         disabled={(date) =>
-                          date < new Date(new Date().setDate(new Date().getDate() - 1)) // Disable past dates
+                          date < new Date(new Date().setDate(new Date().getDate() - 1)) 
                         }
                         initialFocus
                       />
@@ -254,5 +262,3 @@ export function UserProfileForm() {
     </Card>
   );
 }
-
-    
