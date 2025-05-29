@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -33,8 +34,9 @@ const createLogFormSchema = (sets: WorkoutSet[]) => z.object({
 
 
 export function WorkoutLogForm({ dailyWorkout }: WorkoutLogFormProps) {
-  const { updateWorkoutLogInCycle } = useAppContext();
+  const { updateWorkoutLogInCycle, profile } = useAppContext(); // Get profile
   const { toast } = useToast();
+  const unitSuffix = profile?.unitSystem === 'metric' ? 'kg' : 'lb';
 
   const logFormSchema = createLogFormSchema(dailyWorkout.sets);
   type LogFormValues = z.infer<typeof logFormSchema>;
@@ -82,7 +84,7 @@ export function WorkoutLogForm({ dailyWorkout }: WorkoutLogFormProps) {
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between gap-2">
                 <FormLabel className="w-2/3">
-                  Set {index + 1}: {set.targetWeight} kg/lb x {set.targetReps}
+                  Set {index + 1}: {set.targetWeight} {unitSuffix} x {set.targetReps}
                   {set.isAmrap && <span className="text-xs text-primary font-semibold ml-1">(AMRAP)</span>}
                 </FormLabel>
                 <div className="w-1/3">

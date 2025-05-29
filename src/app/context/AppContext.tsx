@@ -3,7 +3,7 @@
 
 import type React from 'react';
 import { createContext, useState, useEffect, useCallback } from 'react';
-import type { UserProfile, WorkoutLogEntry, WorkoutCycle } from '@/lib/types';
+import type { UserProfile, WorkoutLogEntry, WorkoutCycle, UnitSystem } from '@/lib/types';
 import { calculateWendlerCycle } from '@/lib/wendler';
 import { MAIN_LIFTS, MainLiftId } from '@/lib/constants';
 import { format } from 'date-fns';
@@ -21,7 +21,7 @@ export interface AppContextType {
   isLoading: boolean;
   activeCycleNumber: number;
   setActiveCycleNumber: (cycleNum: number) => void;
-  recalculateCycle: () => void; // Kept for explicitness if needed, though useEffect handles it
+  recalculateCycle: () => void;
   resetProgress: () => void;
 }
 
@@ -44,6 +44,10 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Ensure workoutSchedule exists, default to empty array if not (for backward compatibility)
         if (!parsedProfile.workoutSchedule) {
             parsedProfile.workoutSchedule = [];
+        }
+        // Ensure unitSystem exists, default to metric if not
+        if (!parsedProfile.unitSystem) {
+            parsedProfile.unitSystem = 'metric';
         }
         setProfileState(parsedProfile);
       }
@@ -78,7 +82,6 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } else {
       localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
     }
-    // Cycle recalculation is handled by the useEffect watching `profile`
   }, []);
 
   const addWorkoutLog = useCallback((logEntry: WorkoutLogEntry) => {
@@ -91,12 +94,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const setActiveCycleNumber = useCallback((cycleNum: number) => {
     setActiveCycleNumberState(cycleNum);
-    // Cycle recalculation is handled by the useEffect watching `activeCycleNumber`
   }, []);
 
   const recalculateCycle = useCallback(() => {
-    // This function is now mostly for explicit calls if ever needed,
-    // as the useEffect handles automatic recalculation.
     if (profile && profile.startDate && profile.workoutSchedule && profile.workoutSchedule.length > 0) {
       setCurrentCycleData(calculateWendlerCycle(profile, activeCycleNumber));
     } else {
@@ -105,13 +105,13 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [profile, activeCycleNumber]);
 
   const updateWorkoutLogInCycle = useCallback((date: string, mainLiftId: MainLiftId, completedSetsData: WorkoutLogEntry['completedSets']) => {
+    let workoutFoundAndUpdated = false;
     // Step 1: Update the currentCycleData state (purely)
     setCurrentCycleData(prevCycle => {
       if (!prevCycle) return null;
 
       const newCycle = JSON.parse(JSON.stringify(prevCycle)) as WorkoutCycle; // Deep copy
-      let workoutUpdatedInThisCycle = false;
-
+      
       for (const week of newCycle.weeks) {
         for (const day of week.days) {
           if (day.date === date && day.mainLift === mainLiftId) {
@@ -124,17 +124,17 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               );
               return completedSetInfo ? { ...set, completedReps: completedSetInfo.actualReps } : set;
             });
-            workoutUpdatedInThisCycle = true;
+            workoutFoundAndUpdated = true; // Mark that we found and updated the workout
             break;
           }
         }
-        if (workoutUpdatedInThisCycle) break;
+        if (workoutFoundAndUpdated) break;
       }
-      return workoutUpdatedInThisCycle ? newCycle : prevCycle;
+      return workoutFoundAndUpdated ? newCycle : prevCycle;
     });
 
-    // Step 2: Log the workout (side effect)
-    if (profile) {
+    // Step 2: Log the workout (side effect), only if the workout was part of the current cycle data.
+    if (profile && workoutFoundAndUpdated) { // Check workoutFoundAndUpdated
         const logId = `${date}-${mainLiftId}-${new Date().getTime()}`;
         const trainingMaxUsed = profile.trainingMaxes[mainLiftId];
 
@@ -145,7 +145,21 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           completedSets: completedSetsData,
           trainingMaxUsed,
         });
-    } else {
+    } else if (profile && !workoutFoundAndUpdated) {
+        // This case could happen if logging a workout not in the currently displayed cycle (e.g., past/future)
+        // For now, we'll still log it if the profile exists.
+        // A more sophisticated system might handle this differently.
+        const logId = `${date}-${mainLiftId}-${new Date().getTime()}`;
+        const trainingMaxUsed = profile.trainingMaxes[mainLiftId];
+         addWorkoutLog({
+          logId,
+          date,
+          exercise: mainLiftId,
+          completedSets: completedSetsData,
+          trainingMaxUsed,
+        });
+        console.warn("Workout logged but not found in current cycle data display. This might be okay for off-cycle logging.");
+    } else if (!profile) {
         console.error("Cannot log workout: Profile not available.");
     }
   }, [profile, addWorkoutLog]);
@@ -166,19 +180,19 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const resetProfileData: UserProfile = {
         id: profile?.id || "currentUser",
         name: profile?.name ?? "",
+        unitSystem: 'metric', // Default to metric on reset
         workoutSchedule: [], // Reset schedule
         oneRepMaxes: initialOneRepMaxes,
         trainingMaxes: initialTrainingMaxes,
         startDate: format(new Date(), "yyyy-MM-dd"),
     };
 
-    setProfile(resetProfileData); // This will save to localStorage and trigger effect for cycle recalc
+    setProfile(resetProfileData); 
 
     setWorkoutLogsState([]);
     localStorage.setItem(LOCAL_STORAGE_LOGS_KEY, JSON.stringify([]));
 
-    setActiveCycleNumberState(1); // This will also trigger the effect
-    // No need to call recalculateCycle() explicitly, useEffect will handle it.
+    setActiveCycleNumberState(1); 
     setIsLoading(false);
   }, [profile, setProfile]);
 

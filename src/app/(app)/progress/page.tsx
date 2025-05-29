@@ -27,6 +27,7 @@ interface ChartDataPoint {
 
 export default function ProgressPage() {
   const { workoutLogs, profile, isLoading } = useAppContext();
+  const unitSuffix = React.useMemo(() => profile?.unitSystem === 'metric' ? 'kg' : 'lb', [profile]);
 
   const chartDataByLift = React.useMemo(() => {
     const data: Record<MainLiftId, Array<ChartDataPoint>> = {
@@ -44,17 +45,16 @@ export default function ProgressPage() {
 
     logsForCharts.forEach(log => {
       const topSet = log.completedSets.find(s => s.isAmrap) || (log.completedSets.length > 0 ? log.completedSets[log.completedSets.length - 1] : null);
-      if (topSet && topSet.actualReps > 0) { // Consider sets with actual reps for charting AMRAPs
+      if (topSet && topSet.actualReps > 0) {
         const e1RM = calculateE1RM(topSet.prescribedWeight, topSet.actualReps);
-        // We always push to data for AMRAP chart, e1RM can be 0 if reps were 0 but weight > 0
         data[log.exercise].push({
           originalDate: log.date,
-          e1RM: e1RM, // e1RM can be 0 if reps were 0
+          e1RM: e1RM,
           weight: topSet.prescribedWeight,
           reps: topSet.actualReps,
           prescribedRepsTarget: topSet.prescribedReps,
         });
-      } else if (topSet) { // Still push if AMRAP set exists but reps are 0
+      } else if (topSet) {
          data[log.exercise].push({
           originalDate: log.date,
           e1RM: 0,
@@ -92,7 +92,7 @@ export default function ProgressPage() {
   const amrapRepsChartConfig = {
     reps: {
       label: "AMRAP Reps",
-      color: "hsl(var(--chart-1))", // Using chart-1 for AMRAP reps
+      color: "hsl(var(--chart-1))",
     },
   } satisfies ChartConfig;
 
@@ -120,7 +120,6 @@ export default function ProgressPage() {
 
             if (validE1RMDataForLift.length > 1) {
               const previousDataPoint = validE1RMDataForLift[validE1RMDataForLift.length - 2];
-              // previousDataPoint.e1RM is guaranteed > 0 due to filter
               const change = ((latestDataPoint.e1RM - previousDataPoint.e1RM) / previousDataPoint.e1RM) * 100;
               const Icon = change > 0 ? ArrowUp : change < 0 ? ArrowDown : Minus;
               e1RMChangeInfo = {
@@ -142,7 +141,7 @@ export default function ProgressPage() {
                   {latestE1RMDisplay && (
                     <div className="text-right flex-shrink-0">
                       <p className="text-xs font-semibold text-muted-foreground">Latest Est. 1RM</p>
-                      <p className="text-xl font-bold text-primary">{latestE1RMDisplay} <span className="text-xs text-muted-foreground">kg/lb</span></p>
+                      <p className="text-xl font-bold text-primary">{latestE1RMDisplay} <span className="text-xs text-muted-foreground">{unitSuffix}</span></p>
                       {e1RMChangeInfo && (
                         <Badge variant={e1RMChangeInfo.variant} className="mt-1 text-xs py-0.5 px-1.5 h-auto">
                           <span className="mr-1">{e1RMChangeInfo.icon}</span>
@@ -167,7 +166,7 @@ export default function ProgressPage() {
                   <ChartContainer config={amrapRepsChartConfig} className="h-[300px] w-full">
                     <LineChart
                       accessibilityLayer
-                      data={allDataForLift} // Use all data for AMRAP reps chart
+                      data={allDataForLift}
                       margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
                       padding={{ top: 10, bottom: 10 }}
                     >
@@ -207,12 +206,12 @@ export default function ProgressPage() {
                                     </div>
                                   </div>
                                   <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px]">
-                                    <span>(Set: {dataPoint.weight} kg/lb x {dataPoint.prescribedRepsTarget})</span>
+                                    <span>(Set: {dataPoint.weight} {unitSuffix} x {dataPoint.prescribedRepsTarget})</span>
                                   </div>
                                   {dataPoint.e1RM > 0 && (
                                     <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px] mt-1 pt-1 border-t border-dashed">
                                       <span>Est. 1RM:</span>
-                                      <span className="font-medium">{dataPoint.e1RM.toFixed(1)} kg/lb</span>
+                                      <span className="font-medium">{dataPoint.e1RM.toFixed(1)} {unitSuffix}</span>
                                     </div>
                                   )}
                                 </div>
@@ -225,7 +224,7 @@ export default function ProgressPage() {
                       <Line
                         dataKey="reps"
                         type="monotone"
-                        stroke="var(--color-reps)" // This should match amrapRepsChartConfig.reps.color variable in CSS
+                        stroke="var(--color-reps)"
                         strokeWidth={2.5}
                         dot={{ r: 4, fill: "var(--color-reps)", strokeWidth: 0 }}
                         activeDot={{ r: 6, strokeWidth: 1, fill: "var(--background)", stroke: "var(--color-reps)" }}
@@ -267,9 +266,9 @@ export default function ProgressPage() {
                         <TableCell>{format(parseISO(log.date), "MMM d, yyyy")}</TableCell>
                         <TableCell>{exerciseName}</TableCell>
                         <TableCell>
-                          {topSet ? `${topSet.prescribedWeight} kg/lb x ${topSet.actualReps} reps (Target: ${topSet.prescribedReps})` : 'N/A'}
+                          {topSet ? `${topSet.prescribedWeight} ${unitSuffix} x ${topSet.actualReps} reps (Target: ${topSet.prescribedReps})` : 'N/A'}
                         </TableCell>
-                        <TableCell>{log.trainingMaxUsed} kg/lb</TableCell>
+                        <TableCell>{log.trainingMaxUsed} {unitSuffix}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -284,4 +283,3 @@ export default function ProgressPage() {
     </div>
   );
 }
-

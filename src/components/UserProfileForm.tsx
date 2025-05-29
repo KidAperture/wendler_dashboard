@@ -23,7 +23,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { useAppContext } from "@/hooks/use-app-context";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, UnitSystem } from "@/lib/types";
 import { MAIN_LIFTS, MainLiftId, DAYS_OF_WEEK, DayOfWeek, DEFAULT_TRAINING_MAX_PERCENTAGE } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { calculateTrainingMax, roundToNearestPlate } from "@/lib/wendler";
@@ -44,11 +44,15 @@ import {
 import { Separator } from "./ui/separator";
 
 const mainLiftIds = MAIN_LIFTS.map(lift => lift.id) as [MainLiftId, ...MainLiftId[]];
+const unitSystems = ['metric', 'imperial'] as [UnitSystem, ...UnitSystem[]];
 
 const profileFormSchema = z.object({
   name: z.string().optional(),
   startDate: z.date({
     required_error: "A start date is required.",
+  }),
+  unitSystem: z.enum(unitSystems, {
+    required_error: "Please select a unit system (kg or lb)."
   }),
   oneRepMaxes: z.object(
     MAIN_LIFTS.reduce((acc, lift) => {
@@ -89,11 +93,12 @@ export function UserProfileForm() {
   
   const initialFormValues: ProfileFormValues = useMemo(() => ({
     name: "",
+    unitSystem: 'metric', // Default to metric
     oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
       acc[lift.id] = 0;
       return acc;
     }, {} as Record<MainLiftId, number>),
-    startDate: new Date(), // Default to today for new profiles
+    startDate: undefined, // Initialize as undefined, will be set in useEffect
     workoutSelections: initialWorkoutSelections,
   }), []);
 
@@ -102,34 +107,45 @@ export function UserProfileForm() {
     resolver: zodResolver(profileFormSchema),
     defaultValues: initialFormValues,
   });
-
+  
   useEffect(() => {
+    // This effect runs when `profile` changes (e.g., loaded from localStorage or after reset)
+    // or when the component mounts and `initialFormValues` are available.
     if (profile) {
-      const loadedSelections = DAYS_OF_WEEK.map(dayOfWeek => {
-        const assignment = profile.workoutSchedule?.find(ws => ws.day === dayOfWeek);
-        return {
-          day: dayOfWeek,
-          selected: !!assignment,
-          lift: assignment ? assignment.lift : null,
-        };
-      });
-
-      form.reset({
-        name: profile.name ?? "",
-        oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
-          acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
-          return acc;
-        }, {} as Record<MainLiftId, number>),
-        startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
-        workoutSelections: loadedSelections.length > 0 ? loadedSelections : initialWorkoutSelections,
-      });
+        const loadedSelections = DAYS_OF_WEEK.map(dayOfWeek => {
+            const assignment = profile.workoutSchedule?.find(ws => ws.day === dayOfWeek);
+            return {
+                day: dayOfWeek,
+                selected: !!assignment,
+                lift: assignment ? assignment.lift : null,
+            };
+        });
+        form.reset({
+            name: profile.name ?? "",
+            unitSystem: profile.unitSystem || 'metric',
+            oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
+                acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
+                return acc;
+            }, {} as Record<MainLiftId, number>),
+            startDate: profile.startDate ? parseISO(profile.startDate) : new Date(),
+            workoutSelections: loadedSelections.length > 0 ? loadedSelections : initialWorkoutSelections,
+        });
     } else {
-      form.reset(initialFormValues);
+        // No profile exists (e.g., first load and nothing in localStorage)
+        // Reset to initialFormValues, but ensure startDate gets new Date()
+        form.reset({
+            ...initialFormValues,
+            startDate: new Date(), // Ensure new profiles default to today
+        });
     }
   }, [profile, form, initialFormValues]);
 
 
   const watchedOneRepMaxes = form.watch("oneRepMaxes");
+  const watchedUnitSystem = form.watch("unitSystem");
+
+  const unitSuffix = useMemo(() => (watchedUnitSystem === 'metric' ? 'kg' : 'lb'), [watchedUnitSystem]);
+
   const calculatedTrainingMaxes = useMemo(() => {
     return MAIN_LIFTS.reduce((acc, lift) => {
       const orm = watchedOneRepMaxes[lift.id];
@@ -149,7 +165,6 @@ export function UserProfileForm() {
         return;
     }
 
-    // Training maxes are derived from oneRepMaxes, so we use the already calculated ones
     const workoutSchedule = data.workoutSelections
       .filter(selection => selection.selected && selection.lift)
       .map(selection => ({
@@ -161,8 +176,9 @@ export function UserProfileForm() {
       id: profile?.id || "currentUser",
       name: data.name ?? "",
       startDate: format(data.startDate, "yyyy-MM-dd"),
+      unitSystem: data.unitSystem,
       oneRepMaxes: data.oneRepMaxes,
-      trainingMaxes: calculatedTrainingMaxes, // Use the memoized calculated TMs
+      trainingMaxes: calculatedTrainingMaxes, 
       workoutSchedule: workoutSchedule,
     };
     setProfile(newProfile);
@@ -177,8 +193,7 @@ export function UserProfileForm() {
   const handleResetProgress = async () => {
     setIsResetting(true);
     try {
-      await resetAppContextProgress(); // This will update context's profile
-      // Form will be reset by useEffect watching `profile` which will now be the reset profile
+      await resetAppContextProgress(); 
       toast({
         title: "Progress Reset",
         description: "Your workout history and maxes have been cleared. You can now start over.",
@@ -202,7 +217,7 @@ export function UserProfileForm() {
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
         <CardTitle>Your Wendler Profile</CardTitle>
-        <CardDescription>Set up your lifts, schedule, and start date to begin the program.</CardDescription>
+        <CardDescription>Set up your lifts, schedule, units and start date to begin the program.</CardDescription>
       </CardHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -220,12 +235,37 @@ export function UserProfileForm() {
                 </FormItem>
               )}
             />
+            
+            <FormField
+              control={form.control}
+              name="unitSystem"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Unit System</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select unit system" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="metric">Metric (kg)</SelectItem>
+                      <SelectItem value="imperial">Imperial (lb)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Choose the unit system for weights.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="space-y-6">
               <div>
                 <FormLabel className="text-base font-semibold">One Rep Maxes (1RMs)</FormLabel>
                 <FormDescription>
-                  Enter your current estimated 1 Rep Max for each lift. Your Training Max (TM) will be calculated from this (usually {DEFAULT_TRAINING_MAX_PERCENTAGE * 100}% of 1RM).
+                  Enter your current estimated 1 Rep Max for each lift in {unitSuffix}. Your Training Max (TM) will be calculated from this (usually {DEFAULT_TRAINING_MAX_PERCENTAGE * 100}% of 1RM).
                 </FormDescription>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
@@ -236,7 +276,7 @@ export function UserProfileForm() {
                     name={`oneRepMaxes.${lift.id}`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{lift.name} 1RM (kg/lb)</FormLabel>
+                        <FormLabel>{lift.name} 1RM ({unitSuffix})</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -262,12 +302,12 @@ export function UserProfileForm() {
                   <h3 className="text-base font-semibold">Calculated Training Maxes (TMs)</h3>
                 </div>
                 <FormDescription>
-                  These are your working TMs for the program, based on your 1RMs. Weights are rounded to the nearest common plate increment.
+                  These are your working TMs for the program, based on your 1RMs, shown in {unitSuffix}. Weights are rounded to the nearest common plate increment.
                 </FormDescription>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 mt-2">
                 {MAIN_LIFTS.map((lift) => (
                   <div key={lift.id} className="text-sm">
-                    <span className="font-medium">{lift.name} TM:</span> {calculatedTrainingMaxes[lift.id]} kg/lb
+                    <span className="font-medium">{lift.name} TM:</span> {calculatedTrainingMaxes[lift.id]} {unitSuffix}
                   </div>
                 ))}
               </div>
@@ -304,7 +344,6 @@ export function UserProfileForm() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
-                        // disabled={(date) => date < new Date("1900-01-01")} // Allow past dates if user wants to log old cycles
                         initialFocus
                       />
                     </PopoverContent>
@@ -332,7 +371,7 @@ export function UserProfileForm() {
                     <FormField
                       control={form.control}
                       name={`workoutSelections.${index}.selected`}
-                      render={({ field: checkboxField }) => ( // Renamed field to avoid conflict
+                      render={({ field: checkboxField }) => ( 
                         <FormItem className="flex flex-row items-center space-x-3 space-y-0 sm:w-1/3">
                           <FormControl>
                             <Checkbox
@@ -355,11 +394,11 @@ export function UserProfileForm() {
                       <FormField
                         control={form.control}
                         name={`workoutSelections.${index}.lift`}
-                        render={({ field: selectField }) => ( // Renamed field
+                        render={({ field: selectField }) => ( 
                           <FormItem className="flex-1 min-w-[180px]">
                             <Select
                               onValueChange={selectField.onChange}
-                              value={selectField.value ?? ""} // Ensure value is not null for Select
+                              value={selectField.value ?? ""} 
                               defaultValue={selectField.value ?? undefined}
                             >
                               <FormControl>
