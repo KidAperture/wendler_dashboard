@@ -15,11 +15,19 @@ import { calculateE1RM } from "@/lib/wendler";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 
+interface ChartDataPoint {
+  originalDate: string;
+  e1RM: number;
+  weight: number;
+  reps: number;
+  prescribedRepsTarget: string;
+}
+
 export default function ProgressPage() {
   const { workoutLogs, profile, isLoading } = useAppContext();
 
   const chartDataByLift = React.useMemo(() => {
-    const data: Record<MainLiftId, Array<{ originalDate: string; e1RM: number; weight: number; reps: number }>> = {
+    const data: Record<MainLiftId, Array<ChartDataPoint>> = {
       squat: [],
       benchPress: [],
       deadlift: [],
@@ -27,22 +35,22 @@ export default function ProgressPage() {
     };
 
     if (!workoutLogs || workoutLogs.length === 0) {
-      return data; // Return empty data if no logs
+      return data;
     }
 
-    // Sort logs by date ascending for charts
     const logsForCharts = [...workoutLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     logsForCharts.forEach(log => {
       const topSet = log.completedSets.find(s => s.isAmrap) || (log.completedSets.length > 0 ? log.completedSets[log.completedSets.length - 1] : null);
       if (topSet && topSet.actualReps > 0) {
         const e1RM = calculateE1RM(topSet.prescribedWeight, topSet.actualReps);
-        if (e1RM > 0) { // Only include valid e1RM calculations
+        if (e1RM > 0 || topSet.isAmrap) { // Include if it's an AMRAP set even if e1RM is 0 (e.g. 0 reps on AMRAP)
           data[log.exercise].push({
-            originalDate: log.date, // Keep full ISO date for processing
+            originalDate: log.date,
             e1RM: e1RM,
             weight: topSet.prescribedWeight,
             reps: topSet.actualReps,
+            prescribedRepsTarget: topSet.prescribedReps,
           });
         }
       }
@@ -74,12 +82,18 @@ export default function ProgressPage() {
 
   const e1RMChartConfig = {
     e1RM: {
-      label: "Est. 1RM (kg/lb)", // Updated label for clarity
+      label: "Est. 1RM",
       color: "hsl(var(--chart-1))",
     },
   } satisfies ChartConfig;
 
-  // For table, sort logs by date descending
+  const amrapRepsChartConfig = {
+    reps: {
+      label: "AMRAP Reps",
+      color: "hsl(var(--chart-2))",
+    },
+  } satisfies ChartConfig;
+
   const sortedLogsForTable = [...workoutLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
@@ -92,90 +106,165 @@ export default function ProgressPage() {
       <div className="space-y-6">
         {MAIN_LIFTS.map((lift) => {
           const dataForLift = chartDataByLift[lift.id];
-          if (!dataForLift || dataForLift.length < 2) {
-            return (
-              <Card key={lift.id}>
-                <CardHeader>
-                  <CardTitle>{lift.name} - Est. 1RM Progress</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">
-                    Not enough data to display a chart for {lift.name}. Complete at least two workouts with AMRAP sets for this lift.
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          }
+          const notEnoughData = !dataForLift || dataForLift.length < 2;
 
           return (
-            <Card key={lift.id}>
-              <CardHeader>
-                <CardTitle>{lift.name} - Est. 1RM Progress</CardTitle>
-                <CardDescription>Estimated 1 Rep Max trend over time based on your AMRAP sets.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={e1RMChartConfig} className="h-[300px] w-full">
-                  <LineChart
-                    accessibilityLayer
-                    data={dataForLift}
-                    margin={{ top: 5, right: 20, left: -10, bottom: 5 }} // Adjusted left margin for YAxis labels
-                    padding={{ top: 10, bottom: 10 }}
-                  >
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="originalDate"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      tickFormatter={(value) => format(parseISO(value), "MMM d")}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      domain={['dataMin - 5', 'dataMax + 5']}
-                      tickFormatter={(value) => `${value}`} // Keep it simple, unit is in label
-                    />
-                    <ChartTooltip
-                      cursor={true}
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length && label) {
-                          const dataPoint = payload[0].payload as { originalDate: string; e1RM: number; weight: number; reps: number };
-                          return (
-                            <div className="rounded-lg border bg-background p-2.5 shadow-sm text-sm">
-                              <div className="grid gap-1.5">
-                                <div className="font-medium">
-                                  {format(parseISO(dataPoint.originalDate), "MMMM d, yyyy")}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span style={{ backgroundColor: e1RMChartConfig.e1RM.color }} className="h-2.5 w-2.5 shrink-0 rounded-[2px]" />
-                                  <div className="flex flex-1 justify-between">
-                                    <span className="text-muted-foreground">{e1RMChartConfig.e1RM.label}:</span>
-                                    <span className="font-medium">{dataPoint.e1RM.toFixed(1)}</span>
+            <React.Fragment key={lift.id}>
+              {/* AMRAP Reps Chart Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>{lift.name} - AMRAP Reps Progress</CardTitle>
+                  <CardDescription>Actual repetitions achieved in your AMRAP sets over time.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {notEnoughData ? (
+                    <p className="text-muted-foreground">
+                      Not enough data to display an AMRAP reps chart for {lift.name}. Complete at least two workouts with AMRAP sets for this lift.
+                    </p>
+                  ) : (
+                    <ChartContainer config={amrapRepsChartConfig} className="h-[300px] w-full">
+                      <LineChart
+                        accessibilityLayer
+                        data={dataForLift}
+                        margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                        padding={{ top: 10, bottom: 10 }}
+                      >
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="originalDate"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          tickFormatter={(value) => format(parseISO(value), "MMM d")}
+                        />
+                        <YAxis
+                          dataKey="reps"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          domain={['dataMin - 1', 'dataMax + 1']}
+                          allowDecimals={false}
+                          tickFormatter={(value) => `${value}`}
+                        />
+                        <ChartTooltip
+                          cursor={true}
+                          content={({ active, payload, label }) => {
+                            if (active && payload && payload.length && label) {
+                              const dataPoint = payload[0].payload as ChartDataPoint;
+                              return (
+                                <div className="rounded-lg border bg-background p-2.5 shadow-sm text-sm">
+                                  <div className="grid gap-1.5">
+                                    <div className="font-medium">
+                                      {format(parseISO(dataPoint.originalDate), "MMMM d, yyyy")}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span style={{ backgroundColor: amrapRepsChartConfig.reps.color }} className="h-2.5 w-2.5 shrink-0 rounded-[2px]" />
+                                      <div className="flex flex-1 justify-between">
+                                        <span className="text-muted-foreground">{amrapRepsChartConfig.reps.label}:</span>
+                                        <span className="font-medium">{dataPoint.reps}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px]">
+                                      <span>(Set: {dataPoint.weight} kg/lb x {dataPoint.prescribedRepsTarget})</span>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px]">
-                                  <span>(Set: {dataPoint.weight} x {dataPoint.reps} reps)</span>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Line
+                          dataKey="reps"
+                          type="monotone"
+                          stroke="var(--color-reps)"
+                          strokeWidth={2.5}
+                          dot={{ r: 4, fill: "var(--color-reps)", strokeWidth: 0 }}
+                          activeDot={{ r: 6, strokeWidth: 1, fill: "var(--background)", stroke: "var(--color-reps)" }}
+                        />
+                      </LineChart>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Estimated 1RM Chart Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>{lift.name} - Est. 1RM Progress</CardTitle>
+                  <CardDescription>Estimated 1 Rep Max trend over time based on your AMRAP sets.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {notEnoughData ? (
+                     <p className="text-muted-foreground">
+                       Not enough data to display an e1RM chart for {lift.name}. Complete at least two workouts with AMRAP sets for this lift.
+                     </p>
+                  ) : (
+                    <ChartContainer config={e1RMChartConfig} className="h-[300px] w-full">
+                      <LineChart
+                        accessibilityLayer
+                        data={dataForLift.filter(d => d.e1RM > 0)} // Only plot if e1RM is valid
+                        margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                        padding={{ top: 10, bottom: 10 }}
+                      >
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="originalDate"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          tickFormatter={(value) => format(parseISO(value), "MMM d")}
+                        />
+                        <YAxis
+                          dataKey="e1RM"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          domain={['dataMin - 5', 'dataMax + 5']}
+                          tickFormatter={(value) => `${value}`}
+                        />
+                        <ChartTooltip
+                          cursor={true}
+                          content={({ active, payload, label }) => {
+                            if (active && payload && payload.length && label) {
+                              const dataPoint = payload[0].payload as ChartDataPoint;
+                              return (
+                                <div className="rounded-lg border bg-background p-2.5 shadow-sm text-sm">
+                                  <div className="grid gap-1.5">
+                                    <div className="font-medium">
+                                      {format(parseISO(dataPoint.originalDate), "MMMM d, yyyy")}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span style={{ backgroundColor: e1RMChartConfig.e1RM.color }} className="h-2.5 w-2.5 shrink-0 rounded-[2px]" />
+                                      <div className="flex flex-1 justify-between">
+                                        <span className="text-muted-foreground">{e1RMChartConfig.e1RM.label}:</span>
+                                        <span className="font-medium">{dataPoint.e1RM.toFixed(1)}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-1 justify-between text-xs text-muted-foreground/80 pl-[18px]">
+                                      <span>(Set: {dataPoint.weight} kg/lb x {dataPoint.reps} reps)</span>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Line
-                      dataKey="e1RM"
-                      type="monotone"
-                      stroke="var(--color-e1RM)"
-                      strokeWidth={2.5}
-                      dot={{ r: 4, fill: "var(--color-e1RM)", strokeWidth: 0 }}
-                      activeDot={{ r: 6, strokeWidth: 1, fill: "var(--background)", stroke: "var(--color-e1RM)" }}
-                    />
-                  </LineChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Line
+                          dataKey="e1RM"
+                          type="monotone"
+                          stroke="var(--color-e1RM)"
+                          strokeWidth={2.5}
+                          dot={{ r: 4, fill: "var(--color-e1RM)", strokeWidth: 0 }}
+                          activeDot={{ r: 6, strokeWidth: 1, fill: "var(--background)", stroke: "var(--color-e1RM)" }}
+                        />
+                      </LineChart>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </React.Fragment>
           );
         })}
       </div>
@@ -208,7 +297,7 @@ export default function ProgressPage() {
                         <TableCell>{format(parseISO(log.date), "MMM d, yyyy")}</TableCell>
                         <TableCell>{exerciseName}</TableCell>
                         <TableCell>
-                          {topSet ? `${topSet.prescribedWeight} kg/lb x ${topSet.actualReps} reps` : 'N/A'}
+                          {topSet ? `${topSet.prescribedWeight} kg/lb x ${topSet.actualReps} reps (Target: ${topSet.prescribedReps})` : 'N/A'}
                         </TableCell>
                         <TableCell>{log.trainingMaxUsed} kg/lb</TableCell>
                       </TableRow>
@@ -225,4 +314,3 @@ export default function ProgressPage() {
     </div>
   );
 }
-
