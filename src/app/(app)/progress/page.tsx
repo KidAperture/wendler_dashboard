@@ -18,6 +18,38 @@ import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/
 export default function ProgressPage() {
   const { workoutLogs, profile, isLoading } = useAppContext();
 
+  const chartDataByLift = React.useMemo(() => {
+    const data: Record<MainLiftId, Array<{ originalDate: string; e1RM: number; weight: number; reps: number }>> = {
+      squat: [],
+      benchPress: [],
+      deadlift: [],
+      overheadPress: [],
+    };
+
+    if (!workoutLogs || workoutLogs.length === 0) {
+      return data; // Return empty data if no logs
+    }
+
+    // Sort logs by date ascending for charts
+    const logsForCharts = [...workoutLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    logsForCharts.forEach(log => {
+      const topSet = log.completedSets.find(s => s.isAmrap) || (log.completedSets.length > 0 ? log.completedSets[log.completedSets.length - 1] : null);
+      if (topSet && topSet.actualReps > 0) {
+        const e1RM = calculateE1RM(topSet.prescribedWeight, topSet.actualReps);
+        if (e1RM > 0) { // Only include valid e1RM calculations
+          data[log.exercise].push({
+            originalDate: log.date, // Keep full ISO date for processing
+            e1RM: e1RM,
+            weight: topSet.prescribedWeight,
+            reps: topSet.actualReps,
+          });
+        }
+      }
+    });
+    return data;
+  }, [workoutLogs]);
+
   if (isLoading) {
     return <div className="text-center py-10">Loading progress data...</div>;
   }
@@ -39,34 +71,6 @@ export default function ProgressPage() {
       </div>
     );
   }
-
-  const chartDataByLift = React.useMemo(() => {
-    const data: Record<MainLiftId, Array<{ originalDate: string; e1RM: number; weight: number; reps: number }>> = {
-      squat: [],
-      benchPress: [],
-      deadlift: [],
-      overheadPress: [],
-    };
-
-    // Sort logs by date ascending for charts
-    const logsForCharts = [...workoutLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    logsForCharts.forEach(log => {
-      const topSet = log.completedSets.find(s => s.isAmrap) || (log.completedSets.length > 0 ? log.completedSets[log.completedSets.length - 1] : null);
-      if (topSet && topSet.actualReps > 0) {
-        const e1RM = calculateE1RM(topSet.prescribedWeight, topSet.actualReps);
-        if (e1RM > 0) { // Only include valid e1RM calculations
-          data[log.exercise].push({
-            originalDate: log.date, // Keep full ISO date for processing
-            e1RM: e1RM,
-            weight: topSet.prescribedWeight,
-            reps: topSet.actualReps,
-          });
-        }
-      }
-    });
-    return data;
-  }, [workoutLogs]);
 
   const e1RMChartConfig = {
     e1RM: {
@@ -221,3 +225,4 @@ export default function ProgressPage() {
     </div>
   );
 }
+
