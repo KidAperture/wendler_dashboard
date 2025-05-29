@@ -16,6 +16,13 @@
   <header>
     <h1>Wendler 5/3/1 Setup</h1>
     <p>Fill in your details to begin your Wendler 5/3/1 journey.</p>
+        <nav>
+            <ul>
+                <li><a href="index.html">Setup</a></li>
+                <li><a href="program.html">Program</a></li>
+                <li><a href="progress.html">Progress</a></li>
+            </ul>
+        </nav>
   </header>
 
   <main>
@@ -32,6 +39,9 @@
 
           <label for="age">Age:</label>
           <input type="number" id="age" name="age" required aria-label="Enter your age" placeholder="e.g. 25" />
+
+          <label for="startDate">Program Start Date:</label>
+          <input type="date" id="startDate" name="startDate" required aria-label="Select your program start date" />
         </fieldset>
 
         <fieldset>
@@ -44,15 +54,30 @@
 
           <label for="deadlift">Deadlift (lbs):</label>
           <input type="number" id="deadlift" name="deadlift" required aria-label="Enter your starting deadlift weight" placeholder="e.g. 250" />
+
+          <label for="ohp">Overhead Press (lbs):</label>
+          <input type="number" id="ohp" name="ohp" required aria-label="Enter your starting Overhead Press weight" placeholder="e.g. 100" />
         </fieldset>
 
         <fieldset>
           <legend>Select Workout Days</legend>
+          <label for="sunday">Sunday:</label>
+          <input type="checkbox" id="sunday" name="workout-days" value="sunday" aria-label="Select Sunday as a workout day" />
+
           <label for="monday">Monday:</label>
           <input type="checkbox" id="monday" name="workout-days" value="monday" aria-label="Select Monday as a workout day" />
 
+          <label for="tuesday">Tuesday:</label>
+          <input type="checkbox" id="tuesday" name="workout-days" value="tuesday" aria-label="Select Tuesday as a workout day" />
+
           <label for="wednesday">Wednesday:</label>
           <input type="checkbox" id="wednesday" name="workout-days" value="wednesday" aria-label="Select Wednesday as a workout day" />
+
+          <label for="thursday">Thursday:</label>
+          <input type="checkbox" id="thursday" name="workout-days" value="thursday" aria-label="Select Thursday as a workout day" />
+
+          <label for="friday">Friday:</label>
+          <input type="checkbox" id="friday" name="workout-days" value="friday" aria-label="Select Friday as a workout day" />
 
           <label for="saturday">Saturday:</label>
           <input type="checkbox" id="saturday" name="workout-days" value="saturday" aria-label="Select Saturday as a workout day" />
