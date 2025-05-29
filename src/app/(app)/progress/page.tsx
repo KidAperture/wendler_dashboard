@@ -38,7 +38,7 @@ export default function ProgressPage() {
       overheadPress: [],
     };
 
-    if (!workoutLogs || workoutLogs.length === 0 || !profile) { // Added !profile check
+    if (!workoutLogs || workoutLogs.length === 0 || !profile) {
       return data;
     }
 
@@ -51,14 +51,14 @@ export default function ProgressPage() {
         data[log.exercise].push({
           originalDate: log.date,
           e1RM: e1RM,
-          weight: topSet.prescribedWeight, // This is total weight
+          weight: topSet.prescribedWeight,
           reps: topSet.actualReps,
           prescribedRepsTarget: topSet.prescribedReps,
         });
       } else if (topSet) {
          data[log.exercise].push({
           originalDate: log.date,
-          e1RM: 0,
+          e1RM: 0, // Will be filtered out for e1RM specific calculations if needed
           weight: topSet.prescribedWeight,
           reps: 0,
           prescribedRepsTarget: topSet.prescribedReps,
@@ -66,7 +66,7 @@ export default function ProgressPage() {
       }
     });
     return data;
-  }, [workoutLogs, profile]); // Added profile dependency
+  }, [workoutLogs, profile]);
 
   if (isLoading) {
     return <div className="text-center py-10">Loading progress data...</div>;
@@ -121,13 +121,15 @@ export default function ProgressPage() {
 
             if (validE1RMDataForLift.length > 1) {
               const previousDataPoint = validE1RMDataForLift[validE1RMDataForLift.length - 2];
-              const change = ((latestDataPoint.e1RM - previousDataPoint.e1RM) / previousDataPoint.e1RM) * 100;
-              const Icon = change > 0 ? ArrowUp : change < 0 ? ArrowDown : Minus;
-              e1RMChangeInfo = {
-                text: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`,
-                variant: change > 0 ? "default" : change < 0 ? "destructive" : "secondary",
-                icon: <Icon className="h-3 w-3" />
-              };
+              if (previousDataPoint.e1RM > 0) { // Ensure previous e1RM is valid for percentage calculation
+                const change = ((latestDataPoint.e1RM - previousDataPoint.e1RM) / previousDataPoint.e1RM) * 100;
+                const Icon = change > 0 ? ArrowUp : change < 0 ? ArrowDown : Minus;
+                e1RMChangeInfo = {
+                  text: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`,
+                  variant: change > 0 ? "default" : change < 0 ? "destructive" : "secondary",
+                  icon: <Icon className="h-3 w-3" />
+                };
+              }
             }
           }
           
@@ -167,7 +169,7 @@ export default function ProgressPage() {
                   <ChartContainer config={amrapRepsChartConfig} className="h-[300px] w-full">
                     <LineChart
                       accessibilityLayer
-                      data={allDataForLift}
+                      data={allDataForLift} // Use allDataForLift to plot all reps, even if e1RM is 0
                       margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
                       padding={{ top: 10, bottom: 10 }}
                     >
@@ -184,14 +186,14 @@ export default function ProgressPage() {
                         tickLine={false}
                         axisLine={false}
                         tickMargin={8}
-                        domain={['dataMin - 1', 'dataMax + 1']}
+                        domain={[0, 'dataMax + 1']} // Ensure Y-axis starts at 0 for reps
                         allowDecimals={false}
                         tickFormatter={(value) => `${value}`}
                       />
                       <ChartTooltip
                         cursor={true}
                         content={({ active, payload, label }) => {
-                          if (active && payload && payload.length && label && profile) { // Added profile check
+                          if (active && payload && payload.length && label && profile) {
                             const dataPoint = payload[0].payload as ChartDataPoint;
                             const displayWeightString = formatDisplayWeight(dataPoint.weight, profile);
                             return (
@@ -230,6 +232,7 @@ export default function ProgressPage() {
                         strokeWidth={2.5}
                         dot={{ r: 4, fill: "var(--color-reps)", strokeWidth: 0 }}
                         activeDot={{ r: 6, strokeWidth: 1, fill: "var(--background)", stroke: "var(--color-reps)" }}
+                        connectNulls={false} // If actualReps can be 0 and we want to show breaks for non-AMRAP or no-data
                       />
                     </LineChart>
                   </ChartContainer>
@@ -262,7 +265,7 @@ export default function ProgressPage() {
                 <TableBody>
                   {sortedLogsForTable.map((log) => {
                     const exerciseName = MAIN_LIFTS.find(l => l.id === log.exercise)?.name || log.exercise;
-                    const topSet = log.completedSets.find(s => s.isAmrap) || log.completedSets[log.completedSets.length - 1];
+                    const topSet = log.completedSets.find(s => s.isAmrap) || (log.completedSets.length > 0 ? log.completedSets[log.completedSets.length - 1] : null);
                     const displayWeight = topSet ? formatDisplayWeight(topSet.prescribedWeight, profile) : 'N/A';
                     return (
                       <TableRow key={log.logId}>
@@ -286,3 +289,4 @@ export default function ProgressPage() {
     </div>
   );
 }
+
