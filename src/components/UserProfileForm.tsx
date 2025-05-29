@@ -45,10 +45,10 @@ const profileFormSchema = z.object({
   name: z.string().optional(),
   startDate: z.date({
     required_error: "A start date is required.",
-  }).optional(), // Made optional to handle undefined initial state for new profiles
+  }).optional(), 
   oneRepMaxes: z.object(
     MAIN_LIFTS.reduce((acc, lift) => {
-      acc[lift.id] = z.coerce.number().min(0, `${lift.name} max can be 0 if unknown, but not negative.`); // Allow 0
+      acc[lift.id] = z.coerce.number().min(0, `${lift.name} max can be 0 if unknown, but not negative.`); 
       return acc;
     }, {} as Record<MainLiftId, z.ZodNumber>)
   ),
@@ -59,7 +59,6 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-// Base default values for a new/empty form
 const initialFormValues: ProfileFormValues = {
   name: "",
   oneRepMaxes: MAIN_LIFTS.reduce((acc, lift) => {
@@ -67,11 +66,11 @@ const initialFormValues: ProfileFormValues = {
     return acc;
   }, {} as Record<MainLiftId, number>),
   workoutDays: [],
-  startDate: undefined, // Initialize startDate as undefined for client-side setting
+  startDate: undefined, 
 };
 
 export function UserProfileForm() {
-  const { profile, setProfile, recalculateCycle, resetProgress: resetAppContextProgress } = useAppContext();
+  const { profile, setProfile, resetProgress: resetAppContextProgress } = useAppContext();
   const { toast } = useToast();
   const router = useRouter();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -81,11 +80,10 @@ export function UserProfileForm() {
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
-    defaultValues: initialFormValues, // Start with base initial values
+    defaultValues: initialFormValues, 
   });
 
   useEffect(() => {
-    // Effect to initialize form when profile loads or changes (e.g., after reset)
     if (profile) {
       const loadedValues = {
         name: profile.name ?? "",
@@ -93,21 +91,18 @@ export function UserProfileForm() {
           acc[lift.id] = profile.oneRepMaxes?.[lift.id] ?? 0;
           return acc;
         }, {} as Record<MainLiftId, number>),
-        startDate: profile.startDate ? parseISO(profile.startDate) : new Date(), // Use current date if missing for some reason
+        startDate: profile.startDate ? parseISO(profile.startDate) : new Date(), 
         workoutDays: profile.workoutDays || [],
       };
       form.reset(loadedValues);
-      setInitialStartDate(loadedValues.startDate); // Keep track of initial start date from profile
+      setInitialStartDate(loadedValues.startDate); 
     } else {
-      // No profile, this means it's a new setup
-      form.reset(initialFormValues); // Reset to truly empty initial values
-      setInitialStartDate(new Date()); // For new profile, default startDate to today on client
+      form.reset(initialFormValues); 
+      setInitialStartDate(new Date()); 
     }
   }, [profile, form]);
 
    useEffect(() => {
-    // Effect to set start date on client side if it was initially undefined
-    // This typically runs for a brand new profile after the initial client render
     if (!form.getValues('startDate') && initialStartDate) {
       form.setValue('startDate', initialStartDate, { shouldValidate: true });
     }
@@ -131,14 +126,14 @@ export function UserProfileForm() {
 
     const newProfile: UserProfile = {
       id: profile?.id || "currentUser", 
-      name: data.name ?? "", // Ensure name is not undefined
+      name: data.name ?? "", 
       startDate: format(data.startDate, "yyyy-MM-dd"),
       oneRepMaxes: data.oneRepMaxes,
       trainingMaxes: trainingMaxes,
       workoutDays: data.workoutDays as DayOfWeek[],
     };
     setProfile(newProfile);
-    recalculateCycle(); 
+    // No need to call recalculateCycle() here, AppContext useEffect will handle it
     
     toast({
       title: "Profile Saved",
@@ -155,7 +150,6 @@ export function UserProfileForm() {
         title: "Progress Reset",
         description: "Your workout history and maxes have been cleared. You can now start over.",
       });
-      // The useEffect listening to `profile` will update the form.
     } catch (error) {
       toast({
         title: "Reset Failed",
@@ -206,7 +200,7 @@ export function UserProfileForm() {
                           type="number" 
                           placeholder={`Enter ${lift.name} 1RM`} 
                           {...field} 
-                          value={field.value ?? 0} // Ensure value is never undefined
+                          value={field.value ?? 0} 
                           onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
                           min="0"
                         />
@@ -248,7 +242,7 @@ export function UserProfileForm() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
-                        disabled={(date) => date < new Date("1900-01-01")} // Example: prevent very past dates
+                        disabled={(date) => date < new Date("1900-01-01")} 
                         initialFocus
                       />
                     </PopoverContent>
@@ -345,3 +339,4 @@ export function UserProfileForm() {
     </Card>
   );
 }
+

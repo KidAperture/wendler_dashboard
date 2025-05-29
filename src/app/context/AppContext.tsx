@@ -34,7 +34,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState(true);
   const [activeCycleNumber, setActiveCycleNumberState] = useState(1);
 
-
+  // Effect for initial data loading from localStorage
   useEffect(() => {
     setIsLoading(true);
     try {
@@ -42,9 +42,6 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (storedProfile) {
         const parsedProfile = JSON.parse(storedProfile) as UserProfile;
         setProfileState(parsedProfile);
-        if (parsedProfile) {
-            setCurrentCycleData(calculateWendlerCycle(parsedProfile, activeCycleNumber));
-        }
       }
       const storedLogs = localStorage.getItem(LOCAL_STORAGE_LOGS_KEY);
       if (storedLogs) {
@@ -54,21 +51,30 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.error("Failed to load data from localStorage", error);
       localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
       localStorage.removeItem(LOCAL_STORAGE_LOGS_KEY);
+      setProfileState(null);
+      setWorkoutLogsState([]);
     } finally {
       setIsLoading(false);
     }
-  }, [activeCycleNumber]); 
+  }, []); // Runs only on mount
+
+  // Effect to calculate/recalculate Wendler cycle when profile or activeCycleNumber changes
+  useEffect(() => {
+    if (profile && profile.startDate && profile.workoutDays && profile.workoutDays.length > 0) {
+      setCurrentCycleData(calculateWendlerCycle(profile, activeCycleNumber));
+    } else {
+      setCurrentCycleData(null); // Clear cycle data if profile is incomplete or null
+    }
+  }, [profile, activeCycleNumber]); // Dependencies: profile object and activeCycleNumber
 
   const setProfile = useCallback((newProfile: UserProfile | null) => {
-    setProfileState(newProfile);
+    setProfileState(newProfile); // This will trigger the useEffect above to recalculate cycle
     if (newProfile) {
       localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(newProfile));
-      setCurrentCycleData(calculateWendlerCycle(newProfile, activeCycleNumber));
     } else {
       localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
-      setCurrentCycleData(null);
     }
-  }, [activeCycleNumber]);
+  }, []);
 
   const addWorkoutLog = useCallback((logEntry: WorkoutLogEntry) => {
     setWorkoutLogsState(prevLogs => {
@@ -80,29 +86,23 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   
   const setActiveCycleNumber = useCallback((cycleNum: number) => {
     setActiveCycleNumberState(cycleNum);
-    if (profile) {
-        setCurrentCycleData(calculateWendlerCycle(profile, cycleNum));
-    }
-  },[profile]);
+    // The useEffect depending on [profile, activeCycleNumber] will recalculate.
+  },[]);
 
+  // recalculateCycle can be kept if there's a need for an explicit trigger elsewhere,
+  // but the useEffect should cover most cases.
   const recalculateCycle = useCallback(() => {
-    if (profile) {
+    if (profile && profile.startDate && profile.workoutDays && profile.workoutDays.length > 0) {
       setCurrentCycleData(calculateWendlerCycle(profile, activeCycleNumber));
+    } else {
+      setCurrentCycleData(null);
     }
   }, [profile, activeCycleNumber]);
 
   const updateWorkoutLogInCycle = useCallback((date: string, mainLiftId: MainLiftId, completedSetsData: WorkoutLogEntry['completedSets']) => {
-    if (!profile) {
-      console.error("Cannot update workout log: Profile is not available.");
-      // Consider showing a toast message to the user here
-      return;
-    }
-
-    // Update currentCycleData state (pure updater)
     setCurrentCycleData(prevCycle => {
-      if (!prevCycle) return null; // Or handle as appropriate for your app's logic
+      if (!prevCycle) return null; 
 
-      // Deep copy to avoid mutating the existing state directly
       const newCycle = JSON.parse(JSON.stringify(prevCycle)) as WorkoutCycle;
       let workoutUpdatedInThisCycle = false;
 
@@ -110,9 +110,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         for (const day of week.days) {
           if (day.date === date && day.mainLift === mainLiftId) {
             day.isCompleted = true;
-            // Map completed sets data to the sets in the cycle
             day.sets = day.sets.map((set, index) => {
-              // Try to find matching completed set by structure (weight, reps, amrap)
               const completedSetData = completedSetsData.find(
                 cs => cs.prescribedWeight === set.targetWeight && 
                       cs.prescribedReps === set.targetReps && 
@@ -121,36 +119,38 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (completedSetData) {
                 return { ...set, completedReps: completedSetData.actualReps };
               }
-              // Fallback: match by index if no structural match (use with caution)
-              // This assumes completedSetsData is ordered exactly like day.sets
-              if (completedSetsData[index]) {
+              // Fallback: match by index if structure is guaranteed
+              if (completedSetsData[index] && 
+                  completedSetsData[index].prescribedWeight === set.targetWeight &&
+                  completedSetsData[index].prescribedReps === set.targetReps) {
                  return { ...set, completedReps: completedSetsData[index].actualReps };
               }
-              return set; // Return original set if no match
+              return set; 
             });
             workoutUpdatedInThisCycle = true;
-            break; // Exit day loop
+            break; 
           }
         }
-        if (workoutUpdatedInThisCycle) break; // Exit week loop
+        if (workoutUpdatedInThisCycle) break; 
       }
-      return newCycle;
+      return workoutUpdatedInThisCycle ? newCycle : prevCycle;
     });
 
-    // Add the workout log entry (this has side effects like localStorage)
-    // This is now called once, after setCurrentCycleData
-    const logId = `${date}-${mainLiftId}-${new Date().getTime()}`; // Generate unique ID
-    const trainingMaxUsed = profile.trainingMaxes[mainLiftId];
-    
-    addWorkoutLog({
-      logId,
-      date,
-      exercise: mainLiftId,
-      completedSets: completedSetsData,
-      trainingMaxUsed,
-    });
-
-  }, [profile, addWorkoutLog]); // setCurrentCycleData is stable, no need to list if not using its direct return
+    if (profile) {
+        const logId = `${date}-${mainLiftId}-${new Date().getTime()}`; 
+        const trainingMaxUsed = profile.trainingMaxes[mainLiftId];
+        
+        addWorkoutLog({
+          logId,
+          date,
+          exercise: mainLiftId,
+          completedSets: completedSetsData,
+          trainingMaxUsed,
+        });
+    } else {
+        console.error("Cannot log workout: Profile not available.");
+    }
+  }, [profile, addWorkoutLog]);
 
   const resetProgress = useCallback(() => {
     setIsLoading(true); 
@@ -165,38 +165,24 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return acc;
     }, {} as Record<MainLiftId, number>);
 
-    let newProfileState: UserProfile;
-    if (profile) {
-        newProfileState = {
-            ...profile, 
-            oneRepMaxes: initialOneRepMaxes,
-            trainingMaxes: initialTrainingMaxes,
-            startDate: format(new Date(), "yyyy-MM-dd"), 
-        };
-    } else {
-        newProfileState = {
-            id: "currentUser",
-            name: "",
-            workoutDays: [], 
-            oneRepMaxes: initialOneRepMaxes,
-            trainingMaxes: initialTrainingMaxes,
-            startDate: format(new Date(), "yyyy-MM-dd"), 
-        };
-    }
+    const resetProfileData: UserProfile = {
+        id: profile?.id || "currentUser",
+        name: profile?.name ?? "",
+        workoutDays: profile?.workoutDays || [], // Or reset to [] if preferred
+        oneRepMaxes: initialOneRepMaxes,
+        trainingMaxes: initialTrainingMaxes,
+        startDate: format(new Date(), "yyyy-MM-dd"), 
+    };
     
-    setProfile(newProfileState); 
+    setProfile(resetProfileData); // This will save to localStorage and trigger the effect for cycle recalc
 
     setWorkoutLogsState([]);
     localStorage.setItem(LOCAL_STORAGE_LOGS_KEY, JSON.stringify([]));
 
-    setActiveCycleNumberState(1); 
+    setActiveCycleNumberState(1); // This will also trigger the effect if profile is already set
     
-    if (newProfileState) {
-      setCurrentCycleData(calculateWendlerCycle(newProfileState, 1));
-    }
-
     setIsLoading(false);
-  }, [profile, setProfile, setIsLoading, setActiveCycleNumberState, setWorkoutLogsState]);
+  }, [profile, setProfile]);
 
 
   return (
