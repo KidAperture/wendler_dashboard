@@ -32,6 +32,37 @@ header p {
   color: #ddd;
 }
 
+/* Navigation Styles */
+nav {
+    margin-top: 15px;
+}
+
+nav ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    text-align: center; /* Centers the li items */
+}
+
+nav ul li {
+    display: inline-block; /* Makes list items horizontal */
+    margin: 0 10px; /* Adds some space between items */
+}
+
+nav ul li a {
+    color: #ecf0f1; /* Light color for links, good contrast with header */
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+}
+
+nav ul li a:hover,
+nav ul li a.active { /* You might want to add an 'active' class via JS later */
+    background-color: #34495e; /* Slightly darker background on hover/active */
+    color: #ffffff;
+}
+
 main {
   max-width: 1000px;
   margin: 30px auto;

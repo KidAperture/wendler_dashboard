@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wendler 5/3/1 Unit Tests</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #test-results p { margin: 5px 0; }
+        .summary { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Wendler 5/3/1 Calculation Unit Tests</h1>
+    <div id="test-results"></div>
+
+    <!-- Include the script with the functions to be tested -->
+    <script src="script.js"></script>
+
+    <!-- Test runner and test cases -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const testResultsDiv = document.getElementById("test-results");
+            let testsPassed = 0;
+            let testsFailed = 0;
+
+            function runTest(testName, assertionFn) {
+                try {
+                    assertionFn();
+                    testResultsDiv.innerHTML += `<p style='color:green;'>PASS: ${testName}</p>`;
+                    testsPassed++;
+                } catch (e) {
+                    testResultsDiv.innerHTML += `<p style='color:red;'>FAIL: ${testName} - ${e.message}</p>`;
+                    testsFailed++;
+                }
+            }
+
+            // --- Test Cases for calculateTrainingMax ---
+            runTest("calculateTrainingMax: Whole number", function() {
+                const result = calculateTrainingMax(100);
+                const expected = 90;
+                if (result !== expected) throw new Error(`Expected ${expected}, but got ${result}`);
+            });
+
+            runTest("calculateTrainingMax: Number needing rounding (up)", function() {
+                const result = calculateTrainingMax(103); // 103 * 0.9 = 92.7
+                const expected = 93;
+                if (result !== expected) throw new Error(`Expected ${expected}, but got ${result}`);
+            });
+
+            runTest("calculateTrainingMax: Number needing rounding (down)", function() {
+                const result = calculateTrainingMax(102); // 102 * 0.9 = 91.8
+                const expected = 92;
+                if (result !== expected) throw new Error(`Expected ${expected}, but got ${result}`);
+            });
+
+            runTest("calculateTrainingMax: Zero input", function() {
+                const result = calculateTrainingMax(0);
+                const expected = 0;
+                if (result !== expected) throw new Error(`Expected ${expected}, but got ${result}`);
+            });
+
+
+            // --- Test Cases for calculateWendlerWeek ---
+            const tm100 = 100; // Training Max for simple percentage checks
+            const tm97 = 97;   // Training Max that will require rounding for weights (97*0.65 = 63.05 -> 63)
+
+            // Week 1 Tests
+            runTest("calculateWendlerWeek: Week 1 - Number of sets", function() {
+                const weekSets = calculateWendlerWeek(tm100, 1);
+                if (weekSets.length !== 3) throw new Error(`Expected 3 sets, but got ${weekSets.length}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 1 - Set 1 details (TM 100)", function() {
+                const set = calculateWendlerWeek(tm100, 1)[0];
+                if (set.percentage !== 0.65) throw new Error(`Expected percentage 0.65, got ${set.percentage}`);
+                if (set.reps !== "5") throw new Error(`Expected reps "5", got ${set.reps}`);
+                if (set.weight !== 65) throw new Error(`Expected weight 65, got ${set.weight}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 1 - Set 3 details (TM 100)", function() {
+                const set = calculateWendlerWeek(tm100, 1)[2];
+                if (set.percentage !== 0.85) throw new Error(`Expected percentage 0.85, got ${set.percentage}`);
+                if (set.reps !== "5+") throw new Error(`Expected reps "5+", got ${set.reps}`);
+                if (set.weight !== 85) throw new Error(`Expected weight 85, got ${set.weight}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 1 - Weights with rounding (TM 97, Set 1)", function() {
+                const set = calculateWendlerWeek(tm97, 1)[0]; // 97 * 0.65 = 63.05
+                if (set.weight !== 63) throw new Error(`Expected weight 63, got ${set.weight}`);
+            });
+
+             runTest("calculateWendlerWeek: Week 1 - Weights with rounding (TM 97, Set 2)", function() {
+                const set = calculateWendlerWeek(tm97, 1)[1]; // 97 * 0.75 = 72.75
+                if (set.weight !== 73) throw new Error(`Expected weight 73, got ${set.weight}`);
+            });
+
+            // Week 2 Tests
+            runTest("calculateWendlerWeek: Week 2 - Number of sets", function() {
+                const weekSets = calculateWendlerWeek(tm100, 2);
+                if (weekSets.length !== 3) throw new Error(`Expected 3 sets, but got ${weekSets.length}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 2 - Set 1 details (TM 100)", function() {
+                const set = calculateWendlerWeek(tm100, 2)[0];
+                if (set.percentage !== 0.70) throw new Error(`Expected percentage 0.70, got ${set.percentage}`);
+                if (set.reps !== "3") throw new Error(`Expected reps "3", got ${set.reps}`);
+                if (set.weight !== 70) throw new Error(`Expected weight 70, got ${set.weight}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 2 - Set 3 details (TM 100)", function() {
+                const set = calculateWendlerWeek(tm100, 2)[2];
+                if (set.percentage !== 0.90) throw new Error(`Expected percentage 0.90, got ${set.percentage}`);
+                if (set.reps !== "3+") throw new Error(`Expected reps "3+", got ${set.reps}`);
+                if (set.weight !== 90) throw new Error(`Expected weight 90, got ${set.weight}`);
+            });
+
+
+            runTest("calculateWendlerWeek: Week 2 - Weights with rounding (TM 97, Set 1)", function() {
+                const set = calculateWendlerWeek(tm97, 2)[0]; // 97 * 0.70 = 67.9
+                if (set.weight !== 68) throw new Error(`Expected weight 68, got ${set.weight}`);
+            });
+
+            // Week 3 Tests
+            runTest("calculateWendlerWeek: Week 3 - Number of sets", function() {
+                const weekSets = calculateWendlerWeek(tm100, 3);
+                if (weekSets.length !== 3) throw new Error(`Expected 3 sets, but got ${weekSets.length}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 3 - Set 1 details (TM 100)", function() {
+                const set = calculateWendlerWeek(tm100, 3)[0];
+                if (set.percentage !== 0.75) throw new Error(`Expected percentage 0.75, got ${set.percentage}`);
+                if (set.reps !== "5") throw new Error(`Expected reps "5", got ${set.reps}`);
+                if (set.weight !== 75) throw new Error(`Expected weight 75, got ${set.weight}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 3 - Set 3 details (TM 100)", function() {
+                const set = calculateWendlerWeek(tm100, 3)[2];
+                if (set.percentage !== 0.95) throw new Error(`Expected percentage 0.95, got ${set.percentage}`);
+                if (set.reps !== "1+") throw new Error(`Expected reps "1+", got ${set.reps}`);
+                if (set.weight !== 95) throw new Error(`Expected weight 95, got ${set.weight}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 3 - Weights with rounding (TM 97, Set 3)", function() {
+                const set = calculateWendlerWeek(tm97, 3)[2]; // 97 * 0.95 = 92.15
+                if (set.weight !== 92) throw new Error(`Expected weight 92, got ${set.weight}`);
+            });
+
+            // Invalid Week Test
+            runTest("calculateWendlerWeek: Invalid week number", function() {
+                const weekSets = calculateWendlerWeek(tm100, 5);
+                if (!Array.isArray(weekSets) || weekSets.length !== 0) {
+                    throw new Error(`Expected an empty array for invalid week, but got ${JSON.stringify(weekSets)}`);
+                }
+            });
+            
+            runTest("calculateWendlerWeek: Week 1 - Correct percentages", function() {
+                const sets = calculateWendlerWeek(100, 1);
+                const percentages = sets.map(s => s.percentage);
+                const expected = [0.65, 0.75, 0.85];
+                if (JSON.stringify(percentages) !== JSON.stringify(expected)) throw new Error(`Expected ${expected}, got ${percentages}`);
+            });
+
+            runTest("calculateWendlerWeek: Week 2 - Correct reps", function() {
+                const sets = calculateWendlerWeek(100, 2);
+                const reps = sets.map(s => s.reps);
+                const expected = ["3", "3", "3+"];
+                if (JSON.stringify(reps) !== JSON.stringify(expected)) throw new Error(`Expected ${expected}, got ${reps}`);
+            });
+
+
+            // --- Summary ---
+            const summaryDiv = document.createElement("div");
+            summaryDiv.className = "summary";
+            summaryDiv.innerHTML = `${testsPassed} tests passed, ${testsFailed} tests failed.`;
+            testResultsDiv.appendChild(summaryDiv);
+        });
+    </script>
+</body>
+</html>
