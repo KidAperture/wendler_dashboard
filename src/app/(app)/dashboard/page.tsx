@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { format, parseISO, isToday as fnsIsToday, addWeeks, subWeeks, getYear, getTime, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
+import { format, parseISO, isToday as fnsIsToday, addWeeks, subWeeks, getYear, getTime, startOfWeek, endOfWeek, eachDayOfInterval, getDay } from "date-fns";
 import { useState, useEffect } from "react";
 import type { DailyWorkout } from "@/lib/types";
 
